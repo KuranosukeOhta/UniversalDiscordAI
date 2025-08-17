@@ -133,6 +133,16 @@ class UniversalDiscordAI(commands.Bot):
         except Exception as e:
             self.logger.warning(f"親クラスの終了処理でエラー: {e}")
         
+        # aiohttpセッションの適切な終了処理
+        try:
+            if hasattr(self, 'http') and hasattr(self.http, '_HTTPClient__session'):
+                session = self.http._HTTPClient__session
+                if not session.closed:
+                    await session.close()
+                    self.logger.info("aiohttpセッションを適切に終了しました")
+        except Exception as e:
+            self.logger.warning(f"aiohttpセッション終了処理でエラー: {e}")
+        
     async def on_message(self, message: discord.Message):
         """メッセージ受信時の処理"""
         # 自分のメッセージは無視
@@ -419,8 +429,14 @@ async def main():
             print("BOTを適切に終了中...")
             await bot_instance.close()
             print("BOTを正常に停止しました")
+            
+            # イベントループの停止前に少し待機（セッション終了のため）
+            await asyncio.sleep(0.5)
+            
             # イベントループを停止
-            asyncio.get_event_loop().stop()
+            loop = asyncio.get_event_loop()
+            if not loop.is_closed():
+                loop.stop()
         except Exception as e:
             print(f"BOT停止中にエラー: {e}")
             sys.exit(1)
