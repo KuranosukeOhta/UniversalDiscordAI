@@ -26,8 +26,8 @@
     "character_rotation_interval": 3600
   },
   "general_settings": {
-    "chat_history_limit": 150,
-    "max_response_length": 2500,
+    "chat_history_limit": 500,
+    "max_response_length": 4000,
     "enable_streaming": true,
     "enable_typing_indicator": true,
     "typing_duration": 5,
@@ -36,7 +36,8 @@
   },
   "openai_settings": {
     "model": "gpt-5",
-    "max_completion_tokens": 2000,
+    "max_completion_tokens": 4000,
+    "max_context_tokens": 128000,
     "temperature": 1.0,
     "timeout_seconds": 90,
     "retry_attempts": 5,
