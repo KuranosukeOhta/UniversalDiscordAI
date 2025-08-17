@@ -94,6 +94,14 @@ class UniversalDiscordAI(commands.Bot):
             activity=activity
         )
         self.logger.info("BOTステータスをオンラインに設定しました")
+        
+        # 料金体系のサマリーを表示
+        cost_summary = self.detailed_logger.cost_calculator.get_cost_summary()
+        self.logger.info(cost_summary)
+        
+        # OpenAI API接続状態のヘルスモニタリングを開始
+        asyncio.create_task(self.openai_handler.start_health_monitoring())
+        self.logger.info("OpenAI API接続状態のヘルスモニタリングを開始しました")
     
     async def on_disconnect(self):
         """Discord切断時の処理"""
@@ -178,6 +186,14 @@ class UniversalDiscordAI(commands.Bot):
                         self.logger.debug(f"ロールメンション検知: {role.name}")
                         break
         
+        # 前のメッセージがBOTかどうかをチェック（設定で有効化されている場合のみ）
+        is_previous_bot = False
+        if self.config.get('bot_settings.continuous_conversation_enabled', True):
+            is_previous_bot = await self.is_previous_message_from_bot(message)
+            if is_previous_bot:
+                mention_type = "連続会話（前のメッセージがBOT）"
+                is_mentioned = True
+        
         # 詳細ログ出力
         if message.guild:
             self.detailed_logger.log_mention_detection(
@@ -190,9 +206,11 @@ class UniversalDiscordAI(commands.Bot):
         
         # デバッグ用ログ
         self.logger.debug(f"メッセージ受信: {message.author} -> {message.content}")
-        self.logger.debug(f"メンション検知: {is_mentioned}")
+        self.logger.debug(f"メンション検知: {is_mentioned} (タイプ: {mention_type})")
         
         if not is_mentioned:
+            # コマンド処理をチェック
+            await self.handle_commands(message)
             return
             
         # 返答処理を開始
@@ -350,6 +368,66 @@ class UniversalDiscordAI(commands.Bot):
             self.logger.error(f"返信先メッセージ取得中にエラー: {e}")
             
         return None
+    
+    async def handle_commands(self, message: discord.Message):
+        """コマンド処理"""
+        if not self.config.get('discord_settings.admin_commands_enabled', True):
+            return
+            
+        content = message.content.strip()
+        command_prefix = self.config.get('discord_settings.command_prefix', '!ai')
+        status_command = self.config.get('discord_settings.status_check_command', '!status')
+        
+        # ステータス確認コマンド
+        if content == status_command:
+            await self.handle_status_command(message)
+    
+    async def handle_status_command(self, message: discord.Message):
+        """ステータス確認コマンドの処理"""
+        try:
+            # OpenAI API接続状態を取得
+            openai_status = self.openai_handler.get_connection_status()
+            rate_limit_status = self.openai_handler.get_rate_limit_status()
+            
+            # ステータス情報を構築
+            status_info = f"""🤖 **Universal Discord AI ステータス**
+
+📡 **OpenAI API接続状態**
+• 状態: {openai_status['status']}
+• 連続失敗回数: {openai_status['consecutive_failures']}
+• 自動復元: {'有効' if openai_status['auto_recovery_enabled'] else '無効'}
+• 最終成功: {openai_status.get('last_successful_call', 'なし')}
+
+⚡ **レート制限状況**
+• 現在の制限: {rate_limit_status['current_limit']}/分
+• 利用可能: {rate_limit_status['available']}/分
+
+🔄 **BOT状態**
+• Discord接続: オンライン
+• 人格数: {len(self.character_bots)}
+• 利用可能人格: {', '.join(self.character_bots.keys())}"""
+            
+            await message.reply(status_info)
+            
+        except Exception as e:
+            self.logger.error(f"ステータスコマンド処理エラー: {e}")
+            await message.reply("申し訳ございません。ステータス情報の取得に失敗しました。")
+    
+    async def is_previous_message_from_bot(self, message: discord.Message) -> bool:
+        """前のメッセージがBOTかどうかを判定"""
+        try:
+            # チャンネルの最新メッセージを取得（制限: 2件）
+            async for msg in message.channel.history(limit=2, before=message):
+                # 最初のメッセージ（現在のメッセージの直前）がBOTかチェック
+                if msg.author == self.user:
+                    self.logger.debug(f"前のメッセージがBOT: {msg.content[:50]}...")
+                    return True
+                break  # 最初のメッセージのみチェック
+            
+            return False
+        except Exception as e:
+            self.logger.error(f"前のメッセージ判定エラー: {e}")
+            return False
 
 
 class CharacterBot:
@@ -431,14 +509,20 @@ class CharacterBot:
             # 成功時の詳細ログ
             response_time = asyncio.get_event_loop().time() - start_time
             if message.guild:
+                # トークン数の推定（簡易版）
+                estimated_output_tokens = len(full_response.split())
+                estimated_input_tokens = len(context.split())  # コンテキストのトークン数推定
+                
                 self.parent_bot.detailed_logger.log_message_generation(
                     server_name=message.guild.name,
                     channel_name=message.channel.name,
                     user_name=message.author.display_name,
                     character_name=self.character_name,
                     response_time=response_time,
-                    token_count=len(full_response.split()),  # 簡易的なトークン数推定
-                    message_sent=response_message is not None
+                    token_count=estimated_output_tokens,
+                    message_sent=response_message is not None,
+                    input_tokens=estimated_input_tokens,
+                    output_tokens=estimated_output_tokens
                 )
                 
         except Exception as e:
