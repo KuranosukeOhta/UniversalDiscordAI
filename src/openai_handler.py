@@ -37,8 +37,8 @@ class OpenAIHandler:
         context: str, 
         character_data: Dict,
         model: str = "gpt-5",
-        max_tokens: int = 2000,
-        temperature: float = 0.7
+        max_completion_tokens: int = 2000,
+        temperature: float = 1.0  # GPT-5はtemperature=1のみサポート
     ) -> AsyncGenerator[str, None]:
         """ストリーミングレスポンスを生成"""
         
@@ -56,10 +56,13 @@ class OpenAIHandler:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": context}
             ],
-            "max_tokens": max_tokens,
-            "temperature": temperature,
+            "max_completion_tokens": max_completion_tokens,  # GPT-5では max_completion_tokens を使用
             "stream": True
         }
+        
+        # GPT-5では temperature=1 がデフォルトなので、1以外の場合のみ指定
+        if temperature != 1.0:
+            request_data["temperature"] = temperature
         
         # レート制限チェック
         await self.rate_limiter.acquire()
@@ -231,7 +234,7 @@ class OpenAIHandler:
                 test_data = {
                     "model": "gpt-5",
                     "messages": [{"role": "user", "content": "Hello"}],
-                    "max_tokens": 5
+                    "max_completion_tokens": 5
                 }
                 
                 async with session.post(

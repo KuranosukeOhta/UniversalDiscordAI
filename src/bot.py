@@ -73,12 +73,54 @@ class UniversalDiscordAI(commands.Bot):
         self.logger.info(f'{self.user} として Discord に接続しました')
         self.logger.info(f'サーバー数: {len(self.guilds)}')
         
-        # BOTステータスを設定
+        # BOTステータスをオンラインに設定
         activity = discord.Activity(
             type=discord.ActivityType.watching,
             name=self.config.get('discord_settings.status', 'チャンネルを監視中...')
         )
-        await self.change_presence(activity=activity)
+        await self.change_presence(
+            status=discord.Status.online,  # 明示的にオンライン設定
+            activity=activity
+        )
+        self.logger.info("BOTステータスをオンラインに設定しました")
+    
+    async def on_disconnect(self):
+        """Discord切断時の処理"""
+        self.logger.warning("Discordから切断されました")
+    
+    async def on_resumed(self):
+        """Discord再接続時の処理"""
+        self.logger.info("Discordに再接続しました")
+        # 再接続時にステータスを再設定
+        try:
+            activity = discord.Activity(
+                type=discord.ActivityType.watching,
+                name=self.config.get('discord_settings.status', 'チャンネルを監視中...')
+            )
+            await self.change_presence(
+                status=discord.Status.online,
+                activity=activity
+            )
+            self.logger.info("再接続時にBOTステータスをオンラインに再設定しました")
+        except Exception as e:
+            self.logger.warning(f"再接続時のステータス設定エラー: {e}")
+    
+    async def close(self):
+        """BOT終了時の処理"""
+        self.logger.info("BOTを終了中...")
+        
+        # ステータスをオフラインに設定
+        try:
+            await self.change_presence(
+                status=discord.Status.offline,
+                activity=None
+            )
+            self.logger.info("BOTステータスをオフラインに設定しました")
+        except Exception as e:
+            self.logger.warning(f"ステータス変更エラー: {e}")
+        
+        # 親クラスの終了処理を呼び出し
+        await super().close()
         
     async def on_message(self, message: discord.Message):
         """メッセージ受信時の処理"""
@@ -90,8 +132,24 @@ class UniversalDiscordAI(commands.Bot):
         if message.author.bot:
             return
             
-        # メンションチェック
-        if not self.user.mentioned_in(message):
+        # メンションチェック（個人メンションまたはBOTロールメンション）
+        is_mentioned = self.user.mentioned_in(message)
+        
+        # ロールメンションもチェック
+        if not is_mentioned and message.guild:
+            bot_member = message.guild.get_member(self.user.id)
+            if bot_member:
+                for role in bot_member.roles:
+                    if role.id in message.raw_role_mentions:
+                        is_mentioned = True
+                        self.logger.debug(f"ロールメンション検知: {role.name}")
+                        break
+        
+        # デバッグ用ログ
+        self.logger.debug(f"メッセージ受信: {message.author} -> {message.content}")
+        self.logger.debug(f"メンション検知: {is_mentioned}")
+        
+        if not is_mentioned:
             return
             
         # 返答処理を開始
@@ -284,10 +342,17 @@ async def main():
         await bot.start(token)
     except KeyboardInterrupt:
         print("\nBOTを停止しています...")
-        await bot.close()
+        try:
+            await bot.close()
+            print("BOTを正常に停止しました")
+        except Exception as e:
+            print(f"BOT停止中にエラー: {e}")
     except Exception as e:
         print(f"BOT実行中にエラーが発生: {e}")
-        await bot.close()
+        try:
+            await bot.close()
+        except Exception as close_error:
+            print(f"BOT停止中にエラー: {close_error}")
         sys.exit(1)
 
 
