@@ -1,0 +1,28 @@
+# Universal Discord AI - Python Dependencies
+
+# Discord.py for Discord API
+discord.py==2.3.2
+
+# OpenAI for GPT-5 API
+openai==1.6.1
+
+# Python-dotenv for environment variable management
+python-dotenv==1.0.0
+
+# Asyncio for asynchronous operations
+aiofiles==23.2.0
+
+# JSON handling
+ujson==5.9.0
+
+# Logging
+coloredlogs==15.0.1
+
+# Rate limiting
+aiolimiter==1.1.0
+
+# HTTP requests
+aiohttp==3.9.1
+
+# Markdown parsing for character files
+markdown==3.5.2

@@ -1,0 +1,33 @@
+{
+  "bot_settings": {
+    "chat_history_limit": 100,
+    "context_token_limit": 125000,
+    "rate_limit_adjustment": true,
+    "typing_indicator_enabled": true,
+    "max_response_length": 2000,
+    "stream_update_interval": 0.5
+  },
+  "openai_settings": {
+    "model": "gpt-5",
+    "max_tokens": 2000,
+    "temperature": 0.7,
+    "stream": true,
+    "timeout": 30
+  },
+  "discord_settings": {
+    "command_prefix": "!ai",
+    "activity_type": "watching",
+    "status": "online"
+  },
+  "character_settings": {
+    "default_character": "friendly",
+    "characters_directory": "characters",
+    "parallel_characters": true
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file_enabled": true,
+    "file_path": "logs/discord_ai.log"
+  }
+}

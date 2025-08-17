@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  discord-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: universal-discord-ai
+    restart: unless-stopped
+    
+    # Environment variables from file
+    env_file:
+      - env.local
+    
+    # Volume mounts for configuration and logs
+    volumes:
+      - ./config:/app/config:ro
+      - ./characters:/app/characters:ro
+      - ./logs:/app/logs:rw
+      - ./env.local:/app/.env:ro
+    
+    # Network configuration
+    networks:
+      - discord-ai-network
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import asyncio; print('Bot is running')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  discord-ai-network:
+    driver: bridge
+
+# Optional: Add volume for persistent logs
+volumes:
+  discord-ai-logs:
+    driver: local
