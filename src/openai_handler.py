@@ -54,10 +54,23 @@ class OpenAIHandler:
             yield "エラー: OpenAI APIキーが設定されていません"
             return
         
-        # 接続状態をチェック
-        if not await self._check_connection_health():
-            yield "エラー: OpenAI APIへの接続が不安定です。しばらく待ってから再試行してください。"
-            return
+        # 接続状態をチェック（自動復元を試行）
+        connection_attempts = 0
+        max_connection_attempts = 3
+        
+        while connection_attempts < max_connection_attempts:
+            if await self._check_connection_health():
+                break
+            
+            connection_attempts += 1
+            if connection_attempts < max_connection_attempts:
+                self.logger.warning(f"OpenAI API接続が不安定です。自動復元を試行中... (試行 {connection_attempts}/{max_connection_attempts})")
+                yield f"接続が不安定です。自動復元を試行中... (試行 {connection_attempts}/{max_connection_attempts})"
+                await asyncio.sleep(2)  # 2秒待機してから再試行
+            else:
+                self.logger.error("OpenAI API接続の自動復元に失敗しました。手動での再試行をお願いします。")
+                yield "エラー: OpenAI APIへの接続が不安定です。しばらく待ってから再試行してください。"
+                return
             
         # システムプロンプトを構築
         system_prompt = self._build_system_prompt(character_data)
@@ -245,9 +258,12 @@ class OpenAIHandler:
     async def test_connection(self) -> bool:
         """OpenAI APIへの接続をテスト"""
         if not self.api_key:
+            self.logger.error("OpenAI APIキーが設定されていません")
             return False
             
         try:
+            self.logger.debug("OpenAI API接続テストを開始...")
+            
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
                 headers = {
                     "Authorization": f"Bearer {self.api_key}",
@@ -261,6 +277,8 @@ class OpenAIHandler:
                     "max_completion_tokens": 5
                 }
                 
+                self.logger.debug(f"テストリクエスト送信中: {self.base_url}/chat/completions")
+                
                 async with session.post(
                     f"{self.base_url}/chat/completions",
                     headers=headers,
@@ -272,11 +290,18 @@ class OpenAIHandler:
                         return True
                     else:
                         error_text = await response.text()
-                        self.logger.error(f"OpenAI API接続テスト失敗: {error_text}")
+                        self.logger.error(f"OpenAI API接続テスト失敗 - HTTP {response.status}: {error_text}")
                         return False
                         
+        except asyncio.TimeoutError:
+            self.logger.error("OpenAI API接続テストがタイムアウトしました")
+            return False
+        except aiohttp.ClientError as e:
+            self.logger.error(f"OpenAI API接続テストでネットワークエラー: {e}")
+            return False
         except Exception as e:
-            self.logger.error(f"OpenAI API接続テストエラー: {e}")
+            self.logger.error(f"OpenAI API接続テストで予期しないエラー: {e}")
+            self.logger.error(f"エラータイプ: {type(e).__name__}")
             return False
             
     def get_rate_limit_status(self) -> Dict:
@@ -322,26 +347,41 @@ class OpenAIHandler:
     async def _check_connection_health(self) -> bool:
         """接続状態の健全性をチェック"""
         if self.connection_status == "healthy":
+            self.logger.debug("OpenAI API接続状態: 正常")
             return True
         
         if self.connection_status == "failed":
             # 失敗状態の場合、自動復元を試行
             if self.auto_recovery_enabled:
-                self.logger.info("OpenAI API接続の自動復元を試行中...")
+                self.logger.warning("OpenAI API接続状態: 失敗 - 自動復元を試行中...")
                 if await self._attempt_recovery():
+                    self.logger.info("OpenAI API接続の自動復元に成功しました")
                     return True
+                else:
+                    self.logger.error("OpenAI API接続の自動復元に失敗しました")
+            else:
+                self.logger.error("OpenAI API接続状態: 失敗 - 自動復元が無効です")
+            return False
         
         # 不安定状態の場合は、短時間待機してから再試行
         if self.connection_status == "degraded":
-            self.logger.info("OpenAI API接続が不安定です。短時間待機してから再試行します")
+            self.logger.warning("OpenAI API接続状態: 不安定 - 短時間待機してから再試行します")
             await asyncio.sleep(5)
             return True
+        
+        # 不明な状態の場合
+        if self.connection_status == "unknown":
+            self.logger.info("OpenAI API接続状態: 不明 - 初回接続テストを実行します")
+            if await self._attempt_recovery():
+                return True
         
         return False
     
     async def _attempt_recovery(self) -> bool:
         """接続の自動復元を試行"""
         try:
+            self.logger.info("OpenAI API接続テストを実行中...")
+            
             # 接続テストを実行
             if await self.test_connection():
                 self.connection_status = "healthy"
@@ -349,10 +389,16 @@ class OpenAIHandler:
                 self.logger.info("OpenAI API接続の自動復元に成功しました")
                 return True
             else:
-                self.logger.warning("OpenAI API接続の自動復元に失敗しました")
+                self.logger.warning("OpenAI API接続テストに失敗しました")
                 return False
+                
+        except asyncio.TimeoutError:
+            self.logger.error("OpenAI API接続テストがタイムアウトしました")
+            return False
         except Exception as e:
             self.logger.error(f"OpenAI API接続の自動復元中にエラー: {e}")
+            self.logger.error(f"エラータイプ: {type(e).__name__}")
+            self.logger.error(f"エラー詳細: {str(e)}")
             return False
     
     def get_connection_status(self) -> Dict:
