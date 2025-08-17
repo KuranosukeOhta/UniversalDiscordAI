@@ -91,7 +91,7 @@ class FunctionCallHandler:
             self.logger.info(f"🔓 管理者権限チェックをスキップ")
         
         # 関数の存在チェック
-        available_function_names = [func["name"] for func in self.available_functions]
+        available_function_names = [func["function"]["name"] for func in self.available_functions]
         self.logger.info(f"📋 利用可能な関数: {available_function_names}")
         
         if function_name not in available_function_names:
