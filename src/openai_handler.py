@@ -152,11 +152,19 @@ class OpenAIHandler:
                 await asyncio.sleep(self.retry_delay * retry_count)
                 
             except Exception as e:
-                self.logger.error(f"OpenAI API 呼び出しエラー: {e}")
+                # エラーの詳細情報をログ出力
+                self.logger.error(f"❌ OpenAI API 呼び出しエラー: {type(e).__name__}: {str(e)}")
+                self.logger.error(f"📋 エラー詳細: {e}")
+                
+                # エラーのトレースバック情報も含める
+                import traceback
+                error_traceback = traceback.format_exc()
+                self.logger.error(f"📋 トレースバック: {error_traceback}")
+                
                 self._update_connection_status(success=False, error_type="exception", error=str(e))
                 retry_count += 1
                 if retry_count >= self.max_retries:
-                    yield f"エラー: OpenAI API呼び出し中に問題が発生しました: {str(e)}"
+                    yield f"エラー: OpenAI API呼び出し中に問題が発生しました: {type(e).__name__}: {str(e)}"
                     return
                 await asyncio.sleep(self.retry_delay * retry_count)
                 
@@ -312,9 +320,18 @@ class OpenAIHandler:
                         }
                         
         except Exception as e:
+            # エラーの詳細情報をログ出力
+            self.logger.error(f"❌ ファンクションコールリクエスト実行中にエラー: {type(e).__name__}: {str(e)}")
+            self.logger.error(f"📋 エラー詳細: {e}")
+            
+            # エラーのトレースバック情報も含める
+            import traceback
+            error_traceback = traceback.format_exc()
+            self.logger.error(f"📋 トレースバック: {error_traceback}")
+            
             return {
                 "success": False,
-                "error": f"リクエスト実行中にエラー: {str(e)}"
+                "error": f"リクエスト実行中にエラー: {type(e).__name__}: {str(e)}"
             }
         
     async def _handle_rate_limit(self, response):
