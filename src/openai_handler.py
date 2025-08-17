@@ -67,7 +67,9 @@ class OpenAIHandler:
         # レート制限チェック
         await self.rate_limiter.acquire()
         
+        start_time = asyncio.get_event_loop().time()
         retry_count = 0
+        
         while retry_count < self.max_retries:
             try:
                 async with aiohttp.ClientSession(timeout=self.timeout) as session:
@@ -90,7 +92,12 @@ class OpenAIHandler:
                             
                         if response.status != 200:
                             error_text = await response.text()
+                            response_time = asyncio.get_event_loop().time() - start_time
+                            
+                            # エラーの詳細ログ
                             self.logger.error(f"OpenAI API エラー ({response.status}): {error_text}")
+                            self.logger.error(f"エラー詳細 - レスポンス時間: {response_time:.2f}秒, リトライ回数: {retry_count}")
+                            
                             yield f"エラー: OpenAI API呼び出しに失敗しました (HTTP {response.status})"
                             return
                             
