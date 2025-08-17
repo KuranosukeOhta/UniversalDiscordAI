@@ -160,6 +160,12 @@ class FunctionCallHandler:
             new_name = arguments.get("new_name")
             
             self.logger.info(f"📝 会話名変更開始 - 新しい名前: {new_name}")
+            self.logger.info(f"🔍 メッセージチャンネルの詳細情報:")
+            self.logger.info(f"  - チャンネル名: {message.channel.name}")
+            self.logger.info(f"  - チャンネルID: {message.channel.id}")
+            self.logger.info(f"  - チャンネルタイプ: {type(message.channel)}")
+            self.logger.info(f"  - チャンネルクラス名: {message.channel.__class__.__name__}")
+            self.logger.info(f"  - チャンネル基底クラス: {message.channel.__class__.__bases__}")
             
             # 現在のチャンネルがスレッドかテキストチャンネルかを判断
             if isinstance(message.channel, discord.Thread):
@@ -198,8 +204,9 @@ class FunctionCallHandler:
                     "conversation_name": new_name,
                     "conversation_type": "thread"
                 }
-            elif isinstance(message.channel, discord.TextChannel):
-                self.logger.info(f"🔍 現在のチャンネルはテキストチャンネルです。チャンネル名を変更します。")
+            elif hasattr(message.channel, 'name') and hasattr(message.channel, 'edit'):
+                # テキストチャンネルの判定を修正
+                self.logger.info(f"🔍 現在のチャンネルはテキストチャンネルと判定されました。チャンネル名を変更します。")
                 channel = message.channel
                 self.logger.info(f"🔍 チャンネルオブジェクト詳細: {type(channel)}")
                 self.logger.info(f"🔍 チャンネル属性: {dir(channel)}")
@@ -236,6 +243,7 @@ class FunctionCallHandler:
                 }
             else:
                 self.logger.warning(f"⚠️ 現在のチャンネルはスレッドでもテキストチャンネルでもありません: {type(message.channel)}")
+                self.logger.warning(f"⚠️ チャンネルの属性: {dir(message.channel)}")
                 return {
                     "success": False,
                     "error": "現在のメッセージはスレッドまたはテキストチャンネル内にありません。"
@@ -255,6 +263,8 @@ class FunctionCallHandler:
             }
         except Exception as e:
             self.logger.error(f"❌ 会話名変更中にエラー: {str(e)}")
+            self.logger.error(f"❌ エラータイプ: {type(e).__name__}")
+            self.logger.error(f"❌ エラー詳細: {str(e)}")
             return {
                 "success": False,
                 "error": f"会話名変更中にエラー: {str(e)}"
