@@ -206,7 +206,7 @@ class FunctionCallHandler:
                     self.logger.warning(f"⚠️ 現在のチャンネルはスレッドではありません: {type(message.channel)}")
                     return {
                         "success": False,
-                        "error": "現在のメッセージはスレッド内ではありません"
+                        "error": "現在のメッセージはスレッド内ではありません。スレッド内でメンションしてください。"
                     }
             else:
                 # 数値のスレッドIDの場合
