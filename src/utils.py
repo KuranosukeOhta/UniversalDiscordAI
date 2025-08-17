@@ -307,3 +307,90 @@ class RateLimitManager:
         """レート制限を初期値にリセット"""
         self.current_rate = self.initial_rate
         self.logger.info("レート制限を初期値にリセットしました")
+
+
+class DetailedLogger:
+    """詳細ログ出力クラス"""
+    
+    def __init__(self, config_manager: ConfigManager):
+        self.config = config_manager
+        self.logger = logging.getLogger(__name__)
+        self.detailed_logging = config_manager.get('logging.detailed_logging', True)
+        self.server_activity_logging = config_manager.get('logging.server_activity_logging', True)
+        self.error_detail_logging = config_manager.get('logging.error_detail_logging', True)
+        self.response_time_logging = config_manager.get('logging.response_time_logging', True)
+        self.channel_activity_logging = config_manager.get('logging.channel_activity_logging', True)
+    
+    def log_server_activity(self, server_name: str, server_id: str, action: str, details: str = ""):
+        """サーバー活動のログ出力"""
+        if self.server_activity_logging:
+            self.logger.info(f"🏠 サーバー活動 [{server_name}({server_id})] {action} {details}")
+    
+    def log_channel_activity(self, channel_name: str, channel_id: str, action: str, details: str = ""):
+        """チャンネル活動のログ出力"""
+        if self.channel_activity_logging:
+            self.logger.info(f"📝 チャンネル活動 [#{channel_name}({channel_id})] {action} {details}")
+    
+    def log_message_generation(self, server_name: str, channel_name: str, user_name: str, 
+                              character_name: str, response_time: float, token_count: int = 0, message_sent: bool = True):
+        """メッセージ生成のログ出力"""
+        if self.detailed_logging:
+            details = f"レスポンス時間: {response_time:.2f}秒"
+            if token_count > 0:
+                details += f", トークン数: {token_count}"
+            if message_sent:
+                details += ", メッセージ送信: 成功"
+            else:
+                details += ", メッセージ送信: 失敗"
+            self.logger.info(f"🤖 メッセージ生成 [{server_name}/#{channel_name}] {user_name} -> {character_name} | {details}")
+    
+    def log_error_detail(self, error: Exception, context: str = "", additional_info: str = ""):
+        """エラーの詳細ログ出力"""
+        if self.error_detail_logging:
+            error_msg = f"🚨 エラー詳細: {type(error).__name__}: {str(error)}"
+            if context:
+                error_msg += f" | コンテキスト: {context}"
+            if additional_info:
+                error_msg += f" | 追加情報: {additional_info}"
+            
+            # スタックトレースも出力
+            import traceback
+            stack_trace = traceback.format_exc()
+            self.logger.error(f"{error_msg}\nスタックトレース:\n{stack_trace}")
+        else:
+            self.logger.error(f"🚨 エラー: {type(error).__name__}: {str(error)}")
+    
+    def log_response_time(self, operation: str, response_time: float, success: bool = True):
+        """レスポンス時間のログ出力"""
+        if self.response_time_logging:
+            status = "✅ 成功" if success else "❌ 失敗"
+            self.logger.info(f"⏱️ レスポンス時間 [{operation}] {response_time:.3f}秒 | {status}")
+    
+    def log_openai_api_call(self, model: str, prompt_tokens: int, completion_tokens: int, 
+                           response_time: float, success: bool, error_details: str = ""):
+        """OpenAI API呼び出しの詳細ログ"""
+        if self.detailed_logging:
+            if success:
+                self.logger.info(f"🔮 OpenAI API呼び出し [{model}] 成功 | "
+                               f"プロンプト: {prompt_tokens}トークン, "
+                               f"完了: {completion_tokens}トークン, "
+                               f"時間: {response_time:.2f}秒")
+            else:
+                self.logger.error(f"🔮 OpenAI API呼び出し [{model}] 失敗 | "
+                                f"時間: {response_time:.2f}秒 | "
+                                f"エラー: {error_details}")
+    
+    def log_mention_detection(self, server_name: str, channel_name: str, user_name: str, 
+                             mention_type: str, message_content: str):
+        """メンション検知のログ出力"""
+        if self.detailed_logging:
+            content_preview = message_content[:100] + "..." if len(message_content) > 100 else message_content
+            self.logger.info(f"👋 メンション検知 [{server_name}/#{channel_name}] "
+                           f"{user_name} | タイプ: {mention_type} | 内容: {content_preview}")
+    
+    def log_character_selection(self, server_name: str, channel_name: str, 
+                               selected_character: str, available_characters: list):
+        """キャラクター選択のログ出力"""
+        if self.detailed_logging:
+            self.logger.info(f"🎭 キャラクター選択 [{server_name}/#{channel_name}] "
+                           f"選択: {selected_character} | 利用可能: {', '.join(available_characters)}")
