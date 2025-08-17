@@ -522,7 +522,8 @@ class CharacterBot:
                     token_count=estimated_output_tokens,
                     message_sent=response_message is not None,
                     input_tokens=estimated_input_tokens,
-                    output_tokens=estimated_output_tokens
+                    output_tokens=estimated_output_tokens,
+                    response_content=full_response
                 )
                 
         except Exception as e:
