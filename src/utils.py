@@ -320,6 +320,9 @@ class DetailedLogger:
         self.error_detail_logging = config_manager.get('logging.error_detail_logging', True)
         self.response_time_logging = config_manager.get('logging.response_time_logging', True)
         self.channel_activity_logging = config_manager.get('logging.channel_activity_logging', True)
+        
+        # 費用計算クラスを初期化
+        self.cost_calculator = CostCalculator()
     
     def log_server_activity(self, server_name: str, server_id: str, action: str, details: str = ""):
         """サーバー活動のログ出力"""
@@ -332,7 +335,8 @@ class DetailedLogger:
             self.logger.info(f"📝 チャンネル活動 [#{channel_name}({channel_id})] {action} {details}")
     
     def log_message_generation(self, server_name: str, channel_name: str, user_name: str, 
-                              character_name: str, response_time: float, token_count: int = 0, message_sent: bool = True):
+                              character_name: str, response_time: float, token_count: int = 0, message_sent: bool = True,
+                              input_tokens: int = 0, output_tokens: int = 0):
         """メッセージ生成のログ出力"""
         if self.detailed_logging:
             details = f"レスポンス時間: {response_time:.2f}秒"
@@ -342,6 +346,14 @@ class DetailedLogger:
                 details += ", メッセージ送信: 成功"
             else:
                 details += ", メッセージ送信: 失敗"
+            
+            # 費用計算を実行
+            if input_tokens > 0 or output_tokens > 0:
+                cost_data = self.cost_calculator.calculate_cost(input_tokens, output_tokens)
+                if cost_data:
+                    cost_summary = self.cost_calculator.format_cost_log(cost_data)
+                    details += f" | {cost_summary}"
+            
             self.logger.info(f"🤖 メッセージ生成 [{server_name}/#{channel_name}] {user_name} -> {character_name} | {details}")
     
     def log_error_detail(self, error: Exception, context: str = "", additional_info: str = ""):
@@ -371,10 +383,20 @@ class DetailedLogger:
         """OpenAI API呼び出しの詳細ログ"""
         if self.detailed_logging:
             if success:
+                # 費用計算を実行
+                cost_data = self.cost_calculator.calculate_cost(prompt_tokens, completion_tokens)
+                cost_summary = ""
+                if cost_data:
+                    cost_summary = f" | {self.cost_calculator.format_cost_log(cost_data)}"
+                
                 self.logger.info(f"🔮 OpenAI API呼び出し [{model}] 成功 | "
                                f"プロンプト: {prompt_tokens}トークン, "
                                f"完了: {completion_tokens}トークン, "
-                               f"時間: {response_time:.2f}秒")
+                               f"時間: {response_time:.2f}秒{cost_summary}")
+                
+                # 詳細な費用情報も出力
+                if cost_data:
+                    self.cost_calculator.log_cost_details(cost_data, f"OpenAI API呼び出し [{model}]")
             else:
                 self.logger.error(f"🔮 OpenAI API呼び出し [{model}] 失敗 | "
                                 f"時間: {response_time:.2f}秒 | "
@@ -385,7 +407,11 @@ class DetailedLogger:
         """メンション検知のログ出力"""
         if self.detailed_logging:
             content_preview = message_content[:100] + "..." if len(message_content) > 100 else message_content
-            self.logger.info(f"👋 メンション検知 [{server_name}/#{channel_name}] "
+            
+            # 連続会話の場合は特別なアイコンを使用
+            icon = "🔄" if "連続会話" in mention_type else "👋"
+            
+            self.logger.info(f"{icon} メンション検知 [{server_name}/#{channel_name}] "
                            f"{user_name} | タイプ: {mention_type} | 内容: {content_preview}")
     
     def log_character_selection(self, server_name: str, channel_name: str, 
@@ -394,3 +420,95 @@ class DetailedLogger:
         if self.detailed_logging:
             self.logger.info(f"🎭 キャラクター選択 [{server_name}/#{channel_name}] "
                            f"選択: {selected_character} | 利用可能: {', '.join(available_characters)}")
+
+
+class CostCalculator:
+    """OpenAI APIの費用計算クラス"""
+    
+    def __init__(self):
+        # GPT-5モデルの料金（100万トークンあたり）
+        self.gpt5_input_cost_per_1m = 5.00  # USD
+        self.gpt5_output_cost_per_1m = 15.00  # USD
+        
+        # 為替レート（150円 = 1ドル）
+        self.exchange_rate = 150.0
+        
+        # 料金の円換算
+        self.gpt5_input_cost_jpy = self.gpt5_input_cost_per_1m * self.exchange_rate
+        self.gpt5_output_cost_jpy = self.gpt5_output_cost_per_1m * self.exchange_rate
+        
+        self.logger = logging.getLogger(__name__)
+    
+    def calculate_cost(self, input_tokens: int, output_tokens: int) -> Dict[str, float]:
+        """トークン数から費用を計算"""
+        try:
+            # 100万トークンあたりの料金を計算
+            input_cost_usd = (input_tokens / 1_000_000) * self.gpt5_input_cost_per_1m
+            output_cost_usd = (output_tokens / 1_000_000) * self.gpt5_output_cost_per_1m
+            
+            # 円換算
+            input_cost_jpy = input_cost_usd * self.exchange_rate
+            output_cost_jpy = output_cost_usd * self.exchange_rate
+            
+            # 合計
+            total_cost_usd = input_cost_usd + output_cost_usd
+            total_cost_jpy = input_cost_jpy + output_cost_jpy
+            
+            return {
+                'input_tokens': input_tokens,
+                'output_tokens': output_tokens,
+                'input_cost_usd': input_cost_usd,
+                'output_cost_usd': output_cost_usd,
+                'total_cost_usd': total_cost_usd,
+                'input_cost_jpy': input_cost_jpy,
+                'output_cost_jpy': output_cost_jpy,
+                'total_cost_jpy': total_cost_jpy
+            }
+        except Exception as e:
+            self.logger.error(f"費用計算エラー: {e}")
+            return {}
+    
+    def format_cost_log(self, cost_data: Dict[str, float]) -> str:
+        """費用情報をログ用にフォーマット"""
+        if not cost_data:
+            return "費用計算エラー"
+        
+        input_tokens = cost_data.get('input_tokens', 0)
+        output_tokens = cost_data.get('output_tokens', 0)
+        total_cost_jpy = cost_data.get('total_cost_jpy', 0)
+        total_cost_usd = cost_data.get('total_cost_usd', 0)
+        
+        return (f"💰 費用計算 | "
+                f"入力: {input_tokens:,}トークン, "
+                f"出力: {output_tokens:,}トークン | "
+                f"合計: ¥{total_cost_jpy:.4f} (${total_cost_usd:.4f})")
+    
+    def log_cost_details(self, cost_data: Dict[str, float], context: str = ""):
+        """費用の詳細ログ出力"""
+        if not cost_data:
+            return
+        
+        # 基本情報
+        input_tokens = cost_data.get('input_tokens', 0)
+        output_tokens = cost_data.get('output_tokens', 0)
+        
+        # 費用情報
+        input_cost_jpy = cost_data.get('input_cost_jpy', 0)
+        output_cost_jpy = cost_data.get('output_cost_jpy', 0)
+        total_cost_jpy = cost_data.get('total_cost_jpy', 0)
+        
+        # 詳細ログ
+        details = f"📊 トークン詳細: 入力 {input_tokens:,} + 出力 {output_tokens:,} = 合計 {input_tokens + output_tokens:,}"
+        cost_breakdown = f"💸 費用内訳: 入力 ¥{input_cost_jpy:.4f} + 出力 ¥{output_cost_jpy:.4f} = 合計 ¥{total_cost_jpy:.4f}"
+        
+        if context:
+            self.logger.info(f"{context} | {details} | {cost_breakdown}")
+        else:
+            self.logger.info(f"{details} | {cost_breakdown}")
+    
+    def get_cost_summary(self) -> str:
+        """料金体系のサマリーを取得"""
+        return (f"💡 GPT-5料金体系 | "
+                f"入力: ${self.gpt5_input_cost_per_1m}/1M tokens (¥{self.gpt5_input_cost_jpy:.0f}/1M tokens), "
+                f"出力: ${self.gpt5_output_cost_per_1m}/1M tokens (¥{self.gpt5_output_cost_jpy:.0f}/1M tokens), "
+                f"為替: ¥{self.exchange_rate:.0f}/$1")
