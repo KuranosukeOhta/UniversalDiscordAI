@@ -402,13 +402,29 @@ class UniversalDiscordAI(commands.Bot):
                 # 画像添付の処理
                 image_attachments = []
                 if message.attachments:
-                    self.logger.info(f"画像添付を検出: {len(message.attachments)}個のファイル")
+                    self.logger.info(f"🖼️ Discord添付ファイル検出: {len(message.attachments)}個")
+                    
+                    # 各添付ファイルの詳細情報をログ出力
+                    for i, attachment in enumerate(message.attachments):
+                        self.logger.info(f"添付ファイル {i+1}:")
+                        self.logger.info(f"  - ファイル名: {attachment.filename}")
+                        self.logger.info(f"  - サイズ: {attachment.size} bytes")
+                        self.logger.info(f"  - URL: {attachment.url}")
+                        self.logger.info(f"  - コンテンツタイプ: {getattr(attachment, 'content_type', 'unknown')}")
+                        self.logger.info(f"  - プロキシURL: {attachment.proxy_url}")
+                    
+                    # 画像処理用のデータを生成
                     image_attachments = self.openai_handler.process_image_attachments(message.attachments)
                     
                     if image_attachments:
-                        self.logger.info(f"画像処理対象: {len(image_attachments)}個の画像")
+                        self.logger.info(f"✅ 画像処理対象: {len(image_attachments)}個の画像")
+                        # 処理対象画像の詳細をログ出力
+                        for i, img in enumerate(image_attachments):
+                            self.logger.info(f"処理対象画像 {i+1}: {img['filename']} (URL: {img['url']})")
                     else:
-                        self.logger.info("画像ファイルは検出されませんでした")
+                        self.logger.warning("⚠️ 画像ファイルとして認識されませんでした")
+                else:
+                    self.logger.info("📝 画像添付なし")
                 
                 # キャラクター選択の詳細ログ
                 if message.guild:

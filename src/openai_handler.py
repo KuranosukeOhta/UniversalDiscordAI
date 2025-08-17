@@ -89,6 +89,8 @@ class OpenAIHandler:
         
         # 画像添付がある場合のメッセージ構造
         if image_attachments:
+            self.logger.info(f"🖼️ 画像付きメッセージ構造を構築中: {len(image_attachments)}個の画像")
+            
             # 画像付きメッセージの場合
             user_message = {
                 "role": "user",
@@ -98,18 +100,26 @@ class OpenAIHandler:
             }
             
             # 画像を追加
-            for image_data in image_attachments:
-                user_message["content"].append({
+            for i, image_data in enumerate(image_attachments):
+                image_content = {
                     "type": "image_url",
                     "image_url": {
                         "url": image_data["url"],
                         "detail": image_data.get("detail", "auto")
                     }
-                })
+                }
+                user_message["content"].append(image_content)
+                
+                self.logger.info(f"画像 {i+1} をメッセージに追加:")
+                self.logger.info(f"  - ファイル名: {image_data['filename']}")
+                self.logger.info(f"  - URL: {image_data['url']}")
+                self.logger.info(f"  - 詳細レベル: {image_data.get('detail', 'auto')}")
             
             request_data["messages"].append(user_message)
+            self.logger.info(f"✅ 画像付きメッセージ構造構築完了")
         else:
             # テキストのみのメッセージ
+            self.logger.info("📝 テキストのみのメッセージ構造を構築")
             request_data["messages"].append({
                 "role": "user", 
                 "content": context
@@ -123,6 +133,17 @@ class OpenAIHandler:
         # GPT-5では temperature=1 がデフォルトなので、1以外の場合のみ指定
         if temperature != 1.0:
             request_data["temperature"] = temperature
+        
+        # リクエストデータの詳細をログ出力
+        self.logger.info(f"🚀 OpenAI APIリクエスト構造:")
+        self.logger.info(f"  - モデル: {model}")
+        self.logger.info(f"  - 最大トークン数: {max_completion_tokens}")
+        self.logger.info(f"  - ストリーミング: {request_data.get('stream', False)}")
+        self.logger.info(f"  - メッセージ数: {len(request_data['messages'])}")
+        if image_attachments:
+            self.logger.info(f"  - 画像添付: {len(image_attachments)}個")
+        if function_definitions:
+            self.logger.info(f"  - 関数定義: {len(function_definitions)}個")
         
         # レート制限チェック
         await self.rate_limiter.acquire()
@@ -551,27 +572,41 @@ class OpenAIHandler:
         """Discordメッセージの添付ファイルから画像データを処理"""
         image_data = []
         
-        for attachment in message_attachments:
+        self.logger.info(f"🔍 画像添付ファイル処理開始: {len(message_attachments)}個の添付ファイル")
+        
+        for i, attachment in enumerate(message_attachments):
+            self.logger.info(f"添付ファイル {i+1} を処理中: {attachment.filename}")
+            
             # 画像ファイルかチェック
             if self._is_image_file(attachment.filename):
                 # 画像の詳細レベルを設定（必要に応じて調整可能）
                 detail = "auto"  # "low", "high", "auto"
                 
-                image_data.append({
+                image_info = {
                     "url": attachment.url,
                     "detail": detail,
                     "filename": attachment.filename,
                     "size": attachment.size,
                     "content_type": getattr(attachment, 'content_type', 'unknown')
-                })
+                }
                 
-                self.logger.info(f"画像添付を検出: {attachment.filename} (URL: {attachment.url})")
+                image_data.append(image_info)
+                
+                self.logger.info(f"✅ 画像として認識: {attachment.filename}")
+                self.logger.info(f"  - URL: {attachment.url}")
+                self.logger.info(f"  - サイズ: {attachment.size} bytes")
+                self.logger.info(f"  - 詳細レベル: {detail}")
+            else:
+                self.logger.info(f"❌ 画像として認識されず: {attachment.filename}")
+                self.logger.info(f"  - ファイル拡張子チェック結果: 非画像ファイル")
         
+        self.logger.info(f"📊 画像処理結果: {len(image_data)}個の画像を認識")
         return image_data
     
     def _is_image_file(self, filename: str) -> bool:
         """ファイル名から画像ファイルかどうかを判定"""
         if not filename:
+            self.logger.debug("ファイル名が空のため、画像ファイルとして認識しません")
             return False
         
         # 画像ファイルの拡張子
@@ -579,7 +614,17 @@ class OpenAIHandler:
         
         # ファイル名を小文字に変換して拡張子をチェック
         file_lower = filename.lower()
-        return any(file_lower.endswith(ext) for ext in image_extensions)
+        is_image = any(file_lower.endswith(ext) for ext in image_extensions)
+        
+        # 詳細ログ出力
+        if is_image:
+            self.logger.debug(f"✅ 画像ファイルとして認識: {filename} (拡張子: {[ext for ext in image_extensions if file_lower.endswith(ext)]})")
+        else:
+            self.logger.debug(f"❌ 画像ファイルとして認識されず: {filename}")
+            self.logger.debug(f"  - 検出された拡張子: {[ext for ext in image_extensions if file_lower.endswith(ext)]}")
+            self.logger.debug(f"  - サポートされている拡張子: {sorted(image_extensions)}")
+        
+        return is_image
     
 
     
