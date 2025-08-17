@@ -151,7 +151,7 @@ class UniversalDiscordAI(commands.Bot):
         # BOTステータスをオンラインに設定
         activity = discord.Activity(
             type=discord.ActivityType.watching,
-            name=self.config.get('discord_settings.status', 'チャンネルを監視中...')
+                            name=self.config.get('discord_settings.status', 'みんなの会話')
         )
         await self.change_presence(
             status=discord.Status.online,
@@ -178,7 +178,7 @@ class UniversalDiscordAI(commands.Bot):
         try:
             activity = discord.Activity(
                 type=discord.ActivityType.watching,
-                name=self.config.get('discord_settings.status', 'チャンネルを監視中...')
+                name=self.config.get('discord_settings.status', 'みんなの会話')
             )
             await self.change_presence(
                 status=discord.Status.online,

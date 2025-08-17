@@ -1,6 +1,6 @@
 {
   "discord_settings": {
-    "status": "チャンネルを監視中...",
+    "status": "みんなの会話",
     "admin_commands_enabled": true,
     "enable_auto_status_update": true,
     "command_prefix": "!ai",
