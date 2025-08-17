@@ -47,7 +47,8 @@ class OpenAIHandler:
         model: str = "gpt-5",
         max_completion_tokens: int = 2000,
         temperature: float = 1.0,  # GPT-5はtemperature=1のみサポート
-        function_definitions: List[Dict] = None
+        function_definitions: List[Dict] = None,
+        image_attachments: List[Dict] = None
     ) -> AsyncGenerator[str, None]:
         """ストリーミングレスポンスを生成"""
         
@@ -80,12 +81,39 @@ class OpenAIHandler:
         request_data = {
             "model": model,
             "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": context}
+                {"role": "system", "content": system_prompt}
             ],
             "max_completion_tokens": max_completion_tokens,  # GPT-5では max_completion_tokens を使用
             "stream": True
         }
+        
+        # 画像添付がある場合のメッセージ構造
+        if image_attachments:
+            # 画像付きメッセージの場合
+            user_message = {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": context}
+                ]
+            }
+            
+            # 画像を追加
+            for image_data in image_attachments:
+                user_message["content"].append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": image_data["url"],
+                        "detail": image_data.get("detail", "auto")
+                    }
+                })
+            
+            request_data["messages"].append(user_message)
+        else:
+            # テキストのみのメッセージ
+            request_data["messages"].append({
+                "role": "user", 
+                "content": context
+            })
         
         # ファンクションコールが有効な場合、関数定義を追加
         if function_definitions:
@@ -518,6 +546,42 @@ class OpenAIHandler:
             )
         
         return status_info
+    
+    def process_image_attachments(self, message_attachments: List) -> List[Dict]:
+        """Discordメッセージの添付ファイルから画像データを処理"""
+        image_data = []
+        
+        for attachment in message_attachments:
+            # 画像ファイルかチェック
+            if self._is_image_file(attachment.filename):
+                # 画像の詳細レベルを設定（必要に応じて調整可能）
+                detail = "auto"  # "low", "high", "auto"
+                
+                image_data.append({
+                    "url": attachment.url,
+                    "detail": detail,
+                    "filename": attachment.filename,
+                    "size": attachment.size,
+                    "content_type": getattr(attachment, 'content_type', 'unknown')
+                })
+                
+                self.logger.info(f"画像添付を検出: {attachment.filename} (URL: {attachment.url})")
+        
+        return image_data
+    
+    def _is_image_file(self, filename: str) -> bool:
+        """ファイル名から画像ファイルかどうかを判定"""
+        if not filename:
+            return False
+        
+        # 画像ファイルの拡張子
+        image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tga'}
+        
+        # ファイル名を小文字に変換して拡張子をチェック
+        file_lower = filename.lower()
+        return any(file_lower.endswith(ext) for ext in image_extensions)
+    
+
     
     async def start_health_monitoring(self):
         """接続状態の継続監視を開始"""

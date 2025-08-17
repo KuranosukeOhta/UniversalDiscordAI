@@ -27,7 +27,11 @@
     "temperature": 1.0,
     "timeout_seconds": 90,
     "retry_attempts": 5,
-    "health_check_interval": 180
+    "health_check_interval": 180,
+    "vision_model": "gpt-4o",
+    "image_processing_enabled": true,
+    "max_image_size_mb": 20,
+    "supported_image_formats": ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tga"]
   },
   "function_call_settings": {
     "enabled": true,

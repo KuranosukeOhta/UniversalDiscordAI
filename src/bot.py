@@ -399,6 +399,17 @@ class UniversalDiscordAI(commands.Bot):
                 # チャット履歴を取得
                 chat_history = await self.get_chat_history(message.channel)
                 
+                # 画像添付の処理
+                image_attachments = []
+                if message.attachments:
+                    self.logger.info(f"画像添付を検出: {len(message.attachments)}個のファイル")
+                    image_attachments = self.openai_handler.process_image_attachments(message.attachments)
+                    
+                    if image_attachments:
+                        self.logger.info(f"画像処理対象: {len(image_attachments)}個の画像")
+                    else:
+                        self.logger.info("画像ファイルは検出されませんでした")
+                
                 # キャラクター選択の詳細ログ
                 if message.guild:
                     available_characters = list(self.character_bots.keys())
@@ -409,11 +420,12 @@ class UniversalDiscordAI(commands.Bot):
                         available_characters=available_characters
                     )
                 
-                # 返答生成
+                # 返答生成（画像添付がある場合は画像処理対応）
                 await character_bot.generate_response(
                     message=message,
                     channel_info=channel_info,
-                    chat_history=chat_history
+                    chat_history=chat_history,
+                    image_attachments=image_attachments
                 )
                 
                 # 成功時のレスポンス時間ログ
@@ -665,11 +677,17 @@ class CharacterBot:
         self.parent_bot = parent_bot
         self.logger = logging.getLogger(f"CharacterBot.{character_name}")
         
-    async def generate_response(self, message: discord.Message, channel_info: Dict, chat_history: List[Dict]):
+    async def generate_response(self, message: discord.Message, channel_info: Dict, chat_history: List[Dict], image_attachments: List[Dict] = None):
         """返答を生成して送信（非同期最適化版）"""
         start_time = asyncio.get_event_loop().time()
         
         try:
+            # 画像添付の処理ログ
+            if image_attachments:
+                self.logger.info(f"🖼️ 画像付きメッセージを処理中 - 画像数: {len(image_attachments)}")
+                for i, img in enumerate(image_attachments):
+                    self.logger.info(f"画像 {i+1}: {img['filename']} (サイズ: {img['size']} bytes)")
+            
             # 返信先のコンテキストを取得
             reply_context = await self.parent_bot.get_reply_context(message)
             
@@ -696,14 +714,14 @@ class CharacterBot:
             
             if use_function_calls:
                 self.logger.info(f"🔧 ファンクションコール対応のレスポンス生成を開始 - ユーザー: {message.author.display_name}, チャンネル: #{message.channel.name}")
-                # ファンクションコール対応のレスポンス生成
+                # ファンクションコール対応のレスポンス生成（画像添付対応）
                 response_message, full_response = await self._generate_response_with_function_calls(
-                    message, context, channel_info, chat_history, reply_context
+                    message, context, channel_info, chat_history, reply_context, image_attachments
                 )
             else:
-                self.logger.info(f"📝 従来のストリーミングレスポンス生成を開始 - ユーザー: {message.author.display_name}, チャンネル: #{message.channel.name}")
-                # 従来のストリーミングレスポンス生成
-                response_message, full_response = await self._generate_streaming_response(message, context)
+                self.logger.info(f"📝 ストリーミングレスポンス生成を開始 - ユーザー: {message.author.display_name}, チャンネル: #{message.channel.name}")
+                # ストリーミングレスポンス生成（画像添付対応）
+                response_message, full_response = await self._generate_streaming_response(message, context, image_attachments)
                         
             # 最終的な返答を設定（初回送信が失敗していた場合のフォールバック）
             if not response_message and full_response:
@@ -757,6 +775,8 @@ class CharacterBot:
                 await message.reply(f"申し訳ございません。エラーが発生しました: {str(e)}")
             except:
                 pass
+    
+
                 
     def build_context(self, message: discord.Message, channel_info: Dict, chat_history: List[Dict], reply_context: Dict = None) -> str:
         """AIへ送信するコンテキストを構築"""
@@ -806,7 +826,8 @@ class CharacterBot:
         context: str, 
         channel_info: Dict, 
         chat_history: List[Dict], 
-        reply_context: Dict
+        reply_context: Dict,
+        image_attachments: List[Dict] = None
     ) -> tuple[discord.Message, str]:
         """ファンクションコール対応のレスポンス生成"""
         try:
@@ -816,6 +837,11 @@ class CharacterBot:
             
             # OpenAI APIでファンクションコール対応のレスポンス生成
             self.logger.info(f"🚀 OpenAI APIでファンクションコール対応レスポンス生成を開始")
+            
+            # 画像添付がある場合のログ
+            if image_attachments:
+                self.logger.info(f"🖼️ ファンクションコール処理で画像添付を検出: {len(image_attachments)}個")
+            
             response_data = await self.parent_bot.openai_handler.generate_response_with_function_calls(
                 context=context,
                 character_data=self.character_data,
@@ -935,15 +961,20 @@ class CharacterBot:
             response_message = await message.reply(error_message)
             return response_message, error_message
     
-    async def _generate_streaming_response(self, message: discord.Message, context: str) -> tuple[discord.Message, str]:
-        """従来のストリーミングレスポンス生成"""
+    async def _generate_streaming_response(self, message: discord.Message, context: str, image_attachments: List[Dict] = None) -> tuple[discord.Message, str]:
+        """ストリーミングレスポンス生成（画像添付対応）"""
         response_message = None
         full_response = ""
         is_first_chunk = True
         
+        # 画像添付がある場合のログ
+        if image_attachments:
+            self.logger.info(f"🖼️ 画像付きストリーミングレスポンス生成開始 - 画像数: {len(image_attachments)}")
+        
         async for chunk in self.parent_bot.openai_handler.generate_streaming_response(
             context=context,
-            character_data=self.character_data
+            character_data=self.character_data,
+            image_attachments=image_attachments
         ):
             full_response += chunk
             
@@ -982,6 +1013,8 @@ class CharacterBot:
                 pass
         
         return response_message, full_response
+    
+
 
 
 async def main():
