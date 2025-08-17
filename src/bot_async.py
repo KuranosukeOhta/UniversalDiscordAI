@@ -1,6 +1,6 @@
 """
-Universal Discord AI - Main Bot Module
-メインのDiscord BOT実装（非同期処理最適化版）
+Universal Discord AI - Main Bot Module (非同期処理最適化版)
+メインのDiscord BOT実装 - 同時処理対応
 """
 
 import asyncio
@@ -60,10 +60,10 @@ class UniversalDiscordAI(commands.Bot):
         self.character_bots: Dict[str, 'CharacterBot'] = {}
         
         # 非同期処理制御
-        self.max_concurrent_messages = self.config.get('bot_settings.max_concurrent_messages', 10)
+        self.max_concurrent_messages = self.config.get('bot_settings.max_concurrent_messages', 15)
         self.message_semaphore = asyncio.Semaphore(self.max_concurrent_messages)
         self.active_message_tasks: Dict[int, MessageTask] = {}
-        self.task_cleanup_interval = 300  # 5分ごとにクリーンアップ
+        self.task_cleanup_interval = self.config.get('bot_settings.cleanup_interval_seconds', 300)
         
         # ログ設定
         self.logger = setup_logging()
@@ -97,9 +97,11 @@ class UniversalDiscordAI(commands.Bot):
             self.character_bots[character_name] = bot_instance
             
         self.logger.info(f"BOTインスタンスを作成しました: {len(self.character_bots)}個")
+        self.logger.info(f"最大同時処理数: {self.max_concurrent_messages}")
         
         # タスククリーンアップタスクを開始
-        asyncio.create_task(self._start_task_cleanup())
+        if self.config.get('bot_settings.enable_task_cleanup', True):
+            asyncio.create_task(self._start_task_cleanup())
         
     async def _start_task_cleanup(self):
         """定期的なタスククリーンアップを実行"""
@@ -119,9 +121,9 @@ class UniversalDiscordAI(commands.Bot):
             # 完了または失敗したタスクを特定
             if task_info.status in ["completed", "failed"]:
                 tasks_to_remove.append(message_id)
-            # 長時間実行中のタスクをチェック（30分以上）
-            elif (current_time - task_info.start_time) > timedelta(minutes=30):
-                self.logger.warning(f"長時間実行中のタスクをキャンセル: {message_id}")
+            # 長時間実行中のタスクをチェック（設定されたタイムアウト時間以上）
+            elif (current_time - task_info.start_time) > timedelta(seconds=self.config.get('bot_settings.message_timeout_seconds', 300)):
+                self.logger.warning(f"タイムアウトしたタスクをキャンセル: {message_id}")
                 task_info.task.cancel()
                 tasks_to_remove.append(message_id)
                 
@@ -152,7 +154,7 @@ class UniversalDiscordAI(commands.Bot):
             name=self.config.get('discord_settings.status', 'チャンネルを監視中...')
         )
         await self.change_presence(
-            status=discord.Status.online,  # 明示的にオンライン設定
+            status=discord.Status.online,
             activity=activity
         )
         self.logger.info("BOTステータスをオンラインに設定しました")
@@ -210,7 +212,7 @@ class UniversalDiscordAI(commands.Bot):
                 break
             except Exception as e:
                 self.logger.warning(f"ステータス変更エラー (試行 {attempt + 1}/3): {e}")
-                if attempt < 2:  # 最後の試行でない場合は少し待機
+                if attempt < 2:
                     await asyncio.sleep(0.5)
         
         # 親クラスの終了処理を呼び出し
