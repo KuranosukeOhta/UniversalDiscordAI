@@ -57,6 +57,23 @@
     "log_rotation": true,
     "log_retention_days": 30,
     "max_log_size_mb": 100,
-    "enable_compression": true
+    "enable_compression": true,
+    "log_messages": {
+      "bot_status_online": "BOTステータスをオンラインに設定しました",
+      "bot_status_offline": "BOTステータスをオフラインに設定しました",
+      "bot_status_reconnect": "再接続時にBOTステータスをオンラインに再設定しました",
+      "bot_startup": "BOTを起動中...",
+      "bot_shutdown": "BOTを終了中...",
+      "discord_connected": "Discordに接続しました",
+      "discord_disconnected": "Discordから切断されました",
+      "discord_reconnected": "Discordに再接続しました",
+      "openai_health_monitoring_started": "OpenAI API接続状態のヘルスモニタリングを開始しました",
+      "task_cancelled": "タスクをキャンセル: {message_id}",
+      "status_change_error": "ステータス変更エラー (試行 {attempt}/3): {error}",
+      "connection_closed": "Discord接続が既に閉じられています",
+      "session_closed": "aiohttpセッションを適切に終了しました",
+      "parent_class_error": "親クラスの終了処理でエラー: {error}",
+      "session_cleanup_error": "aiohttpセッション終了処理でエラー: {error}"
+    }
   }
 }

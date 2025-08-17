@@ -155,7 +155,7 @@ class UniversalDiscordAI(commands.Bot):
             status=discord.Status.online,  # 明示的にオンライン設定
             activity=activity
         )
-        self.logger.info("BOTステータスをオンラインに設定しました")
+        self.logger.info(self.config.get('logging_settings.log_messages.bot_status_online', 'BOTステータスをオンラインに設定しました'))
         
         # 料金体系のサマリーを表示
         cost_summary = self.detailed_logger.cost_calculator.get_cost_summary()
@@ -163,15 +163,15 @@ class UniversalDiscordAI(commands.Bot):
         
         # OpenAI API接続状態のヘルスモニタリングを開始
         asyncio.create_task(self.openai_handler.start_health_monitoring())
-        self.logger.info("OpenAI API接続状態のヘルスモニタリングを開始しました")
+        self.logger.info(self.config.get('logging_settings.log_messages.openai_health_monitoring_started', 'OpenAI API接続状態のヘルスモニタリングを開始しました'))
     
     async def on_disconnect(self):
         """Discord切断時の処理"""
-        self.logger.warning("Discordから切断されました")
+        self.logger.warning(self.config.get('logging_settings.log_messages.discord_disconnected', 'Discordから切断されました'))
     
     async def on_resumed(self):
         """Discord再接続時の処理"""
-        self.logger.info("Discordに再接続しました")
+        self.logger.info(self.config.get('logging_settings.log_messages.discord_reconnected', 'Discordに再接続しました'))
         # 再接続時にステータスを再設定
         try:
             activity = discord.Activity(
@@ -182,19 +182,19 @@ class UniversalDiscordAI(commands.Bot):
                 status=discord.Status.online,
                 activity=activity
             )
-            self.logger.info("再接続時にBOTステータスをオンラインに再設定しました")
+            self.logger.info(self.config.get('logging_settings.log_messages.bot_status_reconnect', '再接続時にBOTステータスをオンラインに再設定しました'))
         except Exception as e:
             self.logger.warning(f"再接続時のステータス設定エラー: {e}")
     
     async def close(self):
         """BOT終了時の処理"""
-        self.logger.info("BOTを終了中...")
+        self.logger.info(self.config.get('logging_settings.log_messages.bot_shutdown', 'BOTを終了中...'))
         
         # 実行中のタスクをキャンセル
         for task_info in self.active_message_tasks.values():
             if not task_info.task.done():
                 task_info.task.cancel()
-                self.logger.debug(f"タスクをキャンセル: {task_info.message_id}")
+                self.logger.debug(self.config.get('logging_settings.log_messages.task_cancelled', 'タスクをキャンセル: {message_id}').format(message_id=task_info.message_id))
         
         # ステータスをオフラインに設定（複数回試行）
         for attempt in range(3):
@@ -203,13 +203,13 @@ class UniversalDiscordAI(commands.Bot):
                     status=discord.Status.offline,
                     activity=None
                 )
-                self.logger.info("BOTステータスをオフラインに設定しました")
+                self.logger.info(self.config.get('logging_settings.log_messages.bot_status_offline', 'BOTステータスをオフラインに設定しました'))
                 break
             except discord.ConnectionClosed:
-                self.logger.info("Discord接続が既に閉じられています")
+                self.logger.info(self.config.get('logging_settings.log_messages.connection_closed', 'Discord接続が既に閉じられています'))
                 break
             except Exception as e:
-                self.logger.warning(f"ステータス変更エラー (試行 {attempt + 1}/3): {e}")
+                self.logger.warning(self.config.get('logging_settings.log_messages.status_change_error', 'ステータス変更エラー (試行 {attempt}/3): {error}').format(attempt=attempt + 1, error=e))
                 if attempt < 2:  # 最後の試行でない場合は少し待機
                     await asyncio.sleep(0.5)
         
@@ -217,7 +217,7 @@ class UniversalDiscordAI(commands.Bot):
         try:
             await super().close()
         except Exception as e:
-            self.logger.warning(f"親クラスの終了処理でエラー: {e}")
+            self.logger.warning(self.config.get('logging_settings.log_messages.parent_class_error', '親クラスの終了処理でエラー: {error}').format(error=e))
         
         # aiohttpセッションの適切な終了処理
         try:
@@ -225,9 +225,9 @@ class UniversalDiscordAI(commands.Bot):
                 session = self.http._HTTPClient__session
                 if not session.closed:
                     await session.close()
-                    self.logger.info("aiohttpセッションを適切に終了しました")
+                    self.logger.info(self.config.get('logging_settings.log_messages.session_closed', 'aiohttpセッションを適切に終了しました'))
         except Exception as e:
-            self.logger.warning(f"aiohttpセッション終了処理でエラー: {e}")
+            self.logger.warning(self.config.get('logging_settings.log_messages.session_cleanup_error', 'aiohttpセッション終了処理でエラー: {error}').format(error=e))
         
     async def on_message(self, message: discord.Message):
         """メッセージ受信時の処理（非同期最適化版）"""
