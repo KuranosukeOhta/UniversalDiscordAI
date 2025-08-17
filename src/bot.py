@@ -18,7 +18,7 @@ from openai_handler import OpenAIHandler
 from utils import ConfigManager, setup_logging, TokenCounter
 
 # 環境変数を読み込み
-load_dotenv('.env')
+load_dotenv('env.local')
 
 class UniversalDiscordAI(commands.Bot):
     """Universal Discord AI Bot クラス"""
