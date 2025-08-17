@@ -728,17 +728,12 @@ class CharacterBot:
             # ファンクションコール機能の状態をログ出力
             self.logger.info(f"ファンクションコール機能チェック - 有効: {use_function_calls}, 利用可能関数数: {len(function_definitions)}")
             
-            if use_function_calls:
-                self.logger.info(f"🔧 ファンクションコール対応のレスポンス生成を開始 - ユーザー: {message.author.display_name}, チャンネル: #{message.channel.name}")
-                # ファンクションコール対応のレスポンス生成（画像添付対応）
-                response_message, full_response = await self._generate_response_with_function_calls(
-                    message, context, channel_info, chat_history, reply_context, image_attachments
-                )
-            else:
-                self.logger.info(f"📝 ストリーミングレスポンス生成を開始 - ユーザー: {message.author.display_name}, チャンネル: #{message.channel.name}")
-                # ストリーミングレスポンス生成（画像添付対応）
-                response_message, full_response = await self._generate_streaming_response(message, context, image_attachments)
-                        
+            # 統合されたレスポンス生成を実行
+            self.logger.info(f"🚀 統合レスポンス生成を開始 - ユーザー: {message.author.display_name}, チャンネル: #{message.channel.name}")
+            response_message, full_response = await self._generate_unified_response(
+                message, context, channel_info, chat_history, reply_context, image_attachments
+            )
+                
             # 最終的な返答を設定（初回送信が失敗していた場合のフォールバック）
             if not response_message and full_response:
                 try:
@@ -836,7 +831,7 @@ class CharacterBot:
         
         return "\n".join(context_parts)
     
-    async def _generate_response_with_function_calls(
+    async def _generate_unified_response(
         self, 
         message: discord.Message, 
         context: str, 
@@ -845,74 +840,129 @@ class CharacterBot:
         reply_context: Dict,
         image_attachments: List[Dict] = None
     ) -> tuple[discord.Message, str]:
-        """ファンクションコール対応のレスポンス生成"""
+        """統合されたレスポンス生成（ファンクションコール対応 + ストリーミング）"""
         try:
             # ファンクション定義を取得
             function_definitions = self.parent_bot.function_call_handler.get_function_definitions()
-            self.logger.info(f"🔧 ファンクション定義を取得完了 - 関数数: {len(function_definitions)}")
+            use_function_calls = len(function_definitions) > 0 and self.parent_bot.function_call_handler.enabled
             
-            # OpenAI APIでファンクションコール対応のレスポンス生成
-            self.logger.info(f"🚀 OpenAI APIでファンクションコール対応レスポンス生成を開始")
+            self.logger.info(f"🔧 統合レスポンス生成開始 - ファンクションコール: {use_function_calls}, 関数数: {len(function_definitions)}")
             
             # 画像添付がある場合のログ
             if image_attachments:
-                self.logger.info(f"🖼️ ファンクションコール処理で画像添付を検出: {len(image_attachments)}個")
+                self.logger.info(f"🖼️ 画像付きレスポンス生成 - 画像数: {len(image_attachments)}")
             
-            response_data = await self.parent_bot.openai_handler.generate_response_with_function_calls(
-                context=context,
-                character_data=self.character_data,
-                function_definitions=function_definitions,
-                max_completion_tokens=16000,  # トークン制限を増加
-                image_attachments=image_attachments
-            )
-            
-            if not response_data["success"]:
-                # エラーの場合は通常のストリーミングレスポンスにフォールバック
-                self.logger.warning(f"❌ ファンクションコールレスポンス生成失敗: {response_data['error']}")
-                self.logger.info(f"🔄 通常のストリーミングレスポンスにフォールバック")
-                return await self._generate_streaming_response(message, context, image_attachments)
-            
-            # レスポンスの詳細をログ出力
-            self.logger.info(f"📊 OpenAI APIレスポンス詳細: {response_data}")
-            
-            # レスポンスからツールコールをチェック
-            choices = response_data.get("choices", [])
-            if not choices:
-                self.logger.warning(f"⚠️ OpenAI APIレスポンスにchoicesがありません")
-                self.logger.info(f"🔄 通常のストリーミングレスポンスにフォールバック")
-                return await self._generate_streaming_response(message, context, image_attachments)
-            
-            choice = choices[0]
-            self.logger.info(f"📋 選択されたchoice: {choice}")
-            message_content = choice.get("message", {})
-            self.logger.info(f"📝 message_content: {message_content}")
-            tool_calls = message_content.get("tool_calls", [])
-            
-            # ツールコールの有無をログ出力
-            if tool_calls:
-                self.logger.info(f"🔧 ツールコールを検出: {len(tool_calls)}個の関数呼び出し")
-                for i, tool_call in enumerate(tool_calls):
-                    function_name = tool_call.get("function", {}).get("name", "不明")
-                    self.logger.info(f"  📋 ツールコール {i+1}: {function_name}")
-                # ツールコールがある場合の処理
-                return await self._handle_tool_calls(message, tool_calls, message_content, context, image_attachments)
-            else:
-                self.logger.info(f"📝 ツールコールなし - 通常のテキストレスポンスを処理")
-                # 通常のテキストレスポンス
-                content = message_content.get("content", "")
-                if content:
-                    self.logger.info(f"✅ テキストレスポンスを送信: {len(content)}文字")
-                    response_message = await message.reply(content)
-                    return response_message, content
+            if use_function_calls:
+                # ファンクションコール対応のレスポンス生成
+                self.logger.info(f"🚀 ファンクションコール対応レスポンス生成を開始")
+                
+                response_data = await self.parent_bot.openai_handler.generate_response_with_function_calls(
+                    context=context,
+                    character_data=self.character_data,
+                    function_definitions=function_definitions,
+                    max_completion_tokens=16000,
+                    image_attachments=image_attachments
+                )
+                
+                if not response_data["success"]:
+                    # エラーの場合はストリーミングレスポンスにフォールバック
+                    self.logger.warning(f"❌ ファンクションコールレスポンス生成失敗: {response_data['error']}")
+                    self.logger.info(f"🔄 ストリーミングレスポンスにフォールバック")
+                    return await self._generate_streaming_response_internal(message, context, image_attachments)
+                
+                # レスポンスからツールコールをチェック
+                choices = response_data.get("choices", [])
+                if not choices:
+                    self.logger.warning(f"⚠️ OpenAI APIレスポンスにchoicesがありません")
+                    self.logger.info(f"🔄 ストリーミングレスポンスにフォールバック")
+                    return await self._generate_streaming_response_internal(message, context, image_attachments)
+                
+                choice = choices[0]
+                message_content = choice.get("message", {})
+                tool_calls = message_content.get("tool_calls", [])
+                
+                if tool_calls:
+                    self.logger.info(f"🔧 ツールコールを検出: {len(tool_calls)}個の関数呼び出し")
+                    for i, tool_call in enumerate(tool_calls):
+                        function_name = tool_call.get("function", {}).get("name", "不明")
+                        self.logger.info(f"  📋 ツールコール {i+1}: {function_name}")
+                    
+                    # ツールコールがある場合の処理
+                    return await self._handle_tool_calls(message, tool_calls, message_content, context, image_attachments)
                 else:
-                    self.logger.warning(f"⚠️ テキストレスポンスが空です")
-                    self.logger.info(f"🔄 通常のストリーミングレスポンスにフォールバック")
-                    return await self._generate_streaming_response(message, context, image_attachments)
+                    self.logger.info(f"📝 ツールコールなし - テキストレスポンスを処理")
+                    # 通常のテキストレスポンス
+                    content = message_content.get("content", "")
+                    if content:
+                        self.logger.info(f"✅ テキストレスポンスを送信: {len(content)}文字")
+                        response_message = await message.reply(content)
+                        return response_message, content
+                    else:
+                        self.logger.warning(f"⚠️ テキストレスポンスが空です")
+                        self.logger.info(f"🔄 ストリーミングレスポンスにフォールバック")
+                        return await self._generate_streaming_response_internal(message, context, image_attachments)
+            else:
+                # ストリーミングレスポンス生成
+                self.logger.info(f"📝 ストリーミングレスポンス生成を開始")
+                return await self._generate_streaming_response_internal(message, context, image_attachments)
                     
         except Exception as e:
-            self.logger.error(f"ファンクションコールレスポンス生成エラー: {e}")
-            # エラーの場合は通常のストリーミングレスポンスにフォールバック
-            return await self._generate_streaming_response(message, context, image_attachments)
+            self.logger.error(f"統合レスポンス生成エラー: {e}")
+            # エラーの場合はストリーミングレスポンスにフォールバック
+            return await self._generate_streaming_response_internal(message, context, image_attachments)
+    
+    async def _generate_streaming_response_internal(self, message: discord.Message, context: str, image_attachments: List[Dict] = None) -> tuple[discord.Message, str]:
+        """内部用ストリーミングレスポンス生成（画像添付対応）"""
+        response_message = None
+        full_response = ""
+        is_first_chunk = True
+        
+        # 画像添付がある場合のログ
+        if image_attachments:
+            self.logger.info(f"🖼️ 画像付きストリーミングレスポンス生成開始 - 画像数: {len(image_attachments)}")
+        
+        async for chunk in self.parent_bot.openai_handler.generate_streaming_response(
+            context=context,
+            character_data=self.character_data,
+            image_attachments=image_attachments
+        ):
+            full_response += chunk
+            
+            # 最初のチャンクの場合、メッセージを送信
+            if is_first_chunk:
+                try:
+                    response_message = await message.reply(full_response[:2000])
+                    is_first_chunk = False
+                    self.logger.debug(f"初回メッセージ送信完了: {len(full_response)}文字")
+                except Exception as e:
+                    self.logger.error(f"初回メッセージ送信エラー: {e}")
+                    # 初回送信に失敗した場合は、次のチャンクで再試行
+                    continue
+            
+            # 2番目以降のチャンクの場合、メッセージを編集更新
+            elif response_message and len(full_response) % 100 == 0:  # 100文字ごとに更新
+                try:
+                    await response_message.edit(content=full_response[:2000])  # Discord制限
+                except discord.NotFound:
+                    # メッセージが削除された場合
+                    break
+                except discord.HTTPException:
+                    # 編集制限に達した場合
+                    pass
+        
+        # 最終的な返答を設定（初回送信が失敗していた場合のフォールバック）
+        if not response_message and full_response:
+            try:
+                response_message = await message.reply(full_response[:2000])
+            except Exception as e:
+                self.logger.error(f"フォールバックメッセージ送信エラー: {e}")
+        elif response_message and full_response:
+            try:
+                await response_message.edit(content=full_response[:2000])
+            except discord.NotFound:
+                pass
+        
+        return response_message, full_response
     
     async def _handle_tool_calls(
         self, 
@@ -978,59 +1028,6 @@ class CharacterBot:
             error_message = f"ツールコールの処理中にエラーが発生しました: {str(e)}"
             response_message = await message.reply(error_message)
             return response_message, error_message
-    
-    async def _generate_streaming_response(self, message: discord.Message, context: str, image_attachments: List[Dict] = None) -> tuple[discord.Message, str]:
-        """ストリーミングレスポンス生成（画像添付対応）"""
-        response_message = None
-        full_response = ""
-        is_first_chunk = True
-        
-        # 画像添付がある場合のログ
-        if image_attachments:
-            self.logger.info(f"🖼️ 画像付きストリーミングレスポンス生成開始 - 画像数: {len(image_attachments)}")
-        
-        async for chunk in self.parent_bot.openai_handler.generate_streaming_response(
-            context=context,
-            character_data=self.character_data,
-            image_attachments=image_attachments
-        ):
-            full_response += chunk
-            
-            # 最初のチャンクの場合、メッセージを送信
-            if is_first_chunk:
-                try:
-                    response_message = await message.reply(full_response[:2000])
-                    is_first_chunk = False
-                    self.logger.debug(f"初回メッセージ送信完了: {len(full_response)}文字")
-                except Exception as e:
-                    self.logger.error(f"初回メッセージ送信エラー: {e}")
-                    # 初回送信に失敗した場合は、次のチャンクで再試行
-                    continue
-            
-            # 2番目以降のチャンクの場合、メッセージを編集更新
-            elif response_message and len(full_response) % 100 == 0:  # 100文字ごとに更新
-                try:
-                    await response_message.edit(content=full_response[:2000])  # Discord制限
-                except discord.NotFound:
-                    # メッセージが削除された場合
-                    break
-                except discord.HTTPException:
-                    # 編集制限に達した場合
-                    pass
-        
-        # 最終的な返答を設定（初回送信が失敗していた場合のフォールバック）
-        if not response_message and full_response:
-            try:
-                response_message = await message.reply(full_response[:2000])
-            except Exception as e:
-                self.logger.error(f"フォールバックメッセージ送信エラー: {e}")
-        elif response_message and full_response:
-            try:
-                await response_message.edit(content=full_response[:2000])
-            except discord.NotFound:
-                pass
-        
-        return response_message, full_response
     
 
 
