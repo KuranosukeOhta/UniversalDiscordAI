@@ -11,16 +11,18 @@
     "continuous_conversation_enabled": true,
     "max_conversation_history": 5
   },
-  "openai_settings": {
-    "model": "gpt-5",
-    "max_completion_tokens": 2000,
-    "temperature": 1.0,
-    "stream": true,
-    "timeout": 30,
-    "auto_recovery_enabled": true,
-    "max_consecutive_failures": 5,
-    "health_check_interval": 60
-  },
+    "openai_settings": {
+      "model": "gpt-5",
+      "max_completion_tokens": 2000,
+      "temperature": 1.0,
+      "stream": true,
+      "timeout": 30,
+      "auto_recovery_enabled": true,
+      "max_consecutive_failures": 5,
+      "health_check_interval": 60,
+      "max_connection_attempts": 3,
+      "connection_retry_delay": 2
+    },
   "discord_settings": {
     "command_prefix": "!ai",
     "activity_type": "watching",
@@ -42,6 +44,8 @@
     "server_activity_logging": true,
     "error_detail_logging": true,
     "response_time_logging": true,
-    "channel_activity_logging": true
+    "channel_activity_logging": true,
+    "response_content_logging": true,
+    "response_content_max_length": 500
   }
 }
