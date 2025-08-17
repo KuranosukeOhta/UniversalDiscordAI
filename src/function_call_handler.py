@@ -37,50 +37,50 @@ class FunctionCallHandler:
         functions = []
         
         if "edit_thread" in self.allowed_operations:
-            functions.append({
-                "type": "function",
-                "function": {
-                    "name": "edit_thread_name",
-                    "description": "Discordスレッドの名前を変更します",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "thread_id": {
-                                "type": "string",
-                                "description": "変更したいスレッドのID"
-                            },
-                            "new_name": {
-                                "type": "string",
-                                "description": "新しいスレッド名"
-                            }
-                        },
-                        "required": ["thread_id", "new_name"]
-                    }
-                }
-            })
+                               functions.append({
+                       "type": "function",
+                       "function": {
+                           "name": "edit_thread_name",
+                           "description": "Discordスレッドの名前を変更します",
+                           "parameters": {
+                               "type": "object",
+                               "properties": {
+                                   "thread_id": {
+                                       "type": "string",
+                                       "description": "変更したいスレッドのID。'current_thread'または'current_thread_id'で現在のスレッドを指定できます。"
+                                   },
+                                   "new_name": {
+                                       "type": "string",
+                                       "description": "新しいスレッド名"
+                                   }
+                               },
+                               "required": ["thread_id", "new_name"]
+                           }
+                       }
+                   })
             
         if "edit_channel" in self.allowed_operations:
-            functions.append({
-                "type": "function",
-                "function": {
-                    "name": "edit_channel_name",
-                    "description": "Discordチャンネルの名前を変更します",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "channel_id": {
-                                "type": "string",
-                                "description": "変更したいチャンネルのID"
-                            },
-                            "new_name": {
-                                "type": "string",
-                                "description": "新しいチャンネル名"
-                            }
-                        },
-                        "required": ["channel_id", "new_name"]
-                    }
-                }
-            })
+                               functions.append({
+                       "type": "function",
+                       "function": {
+                           "name": "edit_channel_name",
+                           "description": "Discordチャンネルの名前を変更します",
+                           "parameters": {
+                               "type": "object",
+                               "properties": {
+                                   "channel_id": {
+                                       "type": "string",
+                                       "description": "変更したいチャンネルのID。'current_channel'または'current_channel_id'で現在のチャンネルを指定できます。"
+                                   },
+                                   "new_name": {
+                                       "type": "string",
+                                       "description": "新しいチャンネル名"
+                                   }
+                               },
+                               "required": ["channel_id", "new_name"]
+                           }
+                       }
+                   })
             
         return functions
     
@@ -193,7 +193,7 @@ class FunctionCallHandler:
             self.logger.info(f"📝 スレッド名変更開始 - スレッドID: {thread_id}, 新しい名前: {new_name}")
             
             # スレッドIDの処理
-            if thread_id == "current_thread":
+            if thread_id in ["current_thread", "current_thread_id"]:
                 # 現在のメッセージがスレッド内にある場合
                 self.logger.info(f"🔍 現在のチャンネルタイプ: {type(message.channel)}")
                 self.logger.info(f"🔍 現在のチャンネル詳細: {message.channel}")
@@ -288,7 +288,7 @@ class FunctionCallHandler:
             self.logger.info(f"📝 チャンネル名変更開始 - チャンネルID: {channel_id}, 新しい名前: {new_name}")
             
             # チャンネルIDの処理
-            if channel_id == "current_channel":
+            if channel_id in ["current_channel", "current_channel_id"]:
                 # 現在のメッセージのチャンネルを使用
                 self.logger.info(f"🔍 現在のチャンネルタイプ: {type(message.channel)}")
                 self.logger.info(f"🔍 現在のチャンネル詳細: {message.channel}")
