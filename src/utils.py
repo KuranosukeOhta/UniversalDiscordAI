@@ -466,12 +466,23 @@ class DetailedLogger:
         if not self.response_content_logging:
             return
             
-        # 返答内容を短縮（設定された長さを超える場合）
+        # 返答内容を適切に分割（単語の境界で分割）
         max_length = self.response_content_max_length
         if len(response_content) > max_length:
-            content_preview = response_content[:max_length] + "..."
+            # 単語の境界で分割（500文字目付近で最も近い単語の終わりを探す）
+            split_point = max_length
+            # 後ろから単語の境界を探す
+            for i in range(max_length, max(0, max_length - 100), -1):
+                if i < len(response_content) and response_content[i] in ' 　\n。、！？':
+                    split_point = i + 1
+                    break
+            
+            content_preview = response_content[:split_point].rstrip()
+            remaining_content = response_content[split_point:].lstrip()
+            
             self.logger.info(f"💬 返答内容 [{server_name}/#{channel_name}] {user_name} -> {character_name} | 内容: {content_preview}")
-            self.logger.info(f"📄 返答内容（続き） [{server_name}/#{channel_name}] {user_name} -> {character_name} | 内容: ...{response_content[max_length:]}")
+            if remaining_content:
+                self.logger.info(f"📄 返答内容（続き） [{server_name}/#{channel_name}] {user_name} -> {character_name} | 内容: {remaining_content}")
         else:
             self.logger.info(f"💬 返答内容 [{server_name}/#{channel_name}] {user_name} -> {character_name} | 内容: {response_content}")
         

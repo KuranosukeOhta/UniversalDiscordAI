@@ -31,7 +31,7 @@
     "status_check_command": "!status"
   },
   "character_settings": {
-    "default_character": "professional",
+    "default_character": "friendly",
     "characters_directory": "characters",
     "parallel_characters": true
   },
@@ -46,6 +46,7 @@
     "response_time_logging": true,
     "channel_activity_logging": true,
     "response_content_logging": true,
-    "response_content_max_length": 500
+    "response_content_max_length": 2000,
+    "response_content_smart_split": true
   }
 }
