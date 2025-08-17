@@ -187,19 +187,38 @@ class FunctionCallHandler:
     async def _edit_thread_name(self, arguments: Dict, message: discord.Message) -> Dict:
         """スレッド名を変更"""
         try:
-            thread_id = int(arguments.get("thread_id"))
+            thread_id = arguments.get("thread_id")
             new_name = arguments.get("new_name")
             
             self.logger.info(f"📝 スレッド名変更開始 - スレッドID: {thread_id}, 新しい名前: {new_name}")
             
-            # スレッドの取得
-            thread = self.bot.get_channel(thread_id)
-            if not thread or not isinstance(thread, discord.Thread):
-                self.logger.error(f"❌ スレッドが見つからないか、スレッドではありません - ID: {thread_id}")
-                return {
-                    "success": False,
-                    "error": "指定されたスレッドが見つかりません"
-                }
+            # スレッドIDの処理
+            if thread_id == "current_thread":
+                # 現在のメッセージがスレッド内にある場合
+                if isinstance(message.channel, discord.Thread):
+                    thread = message.channel
+                    self.logger.info(f"✅ 現在のスレッドを使用: {thread.name}")
+                else:
+                    return {
+                        "success": False,
+                        "error": "現在のメッセージはスレッド内ではありません"
+                    }
+            else:
+                # 数値のスレッドIDの場合
+                try:
+                    thread_id = int(thread_id)
+                    thread = self.bot.get_channel(thread_id)
+                    if not thread or not isinstance(thread, discord.Thread):
+                        self.logger.error(f"❌ スレッドが見つからないか、スレッドではありません - ID: {thread_id}")
+                        return {
+                            "success": False,
+                            "error": "指定されたスレッドが見つかりません"
+                        }
+                except ValueError:
+                    return {
+                        "success": False,
+                        "error": "無効なスレッドIDです"
+                    }
             
             self.logger.info(f"✅ スレッド取得成功: {thread.name}")
             
@@ -237,19 +256,38 @@ class FunctionCallHandler:
     async def _edit_channel_name(self, arguments: Dict, message: discord.Message) -> Dict:
         """チャンネル名を変更"""
         try:
-            channel_id = int(arguments.get("channel_id"))
+            channel_id = arguments.get("channel_id")
             new_name = arguments.get("new_name")
             
             self.logger.info(f"📝 チャンネル名変更開始 - チャンネルID: {channel_id}, 新しい名前: {new_name}")
             
-            # チャンネルの取得
-            channel = self.bot.get_channel(channel_id)
-            if not channel or not isinstance(channel, discord.TextChannel):
-                self.logger.error(f"❌ チャンネルが見つからないか、テキストチャンネルではありません - ID: {channel_id}")
-                return {
-                    "success": False,
-                    "error": "指定されたチャンネルが見つかりません"
-                }
+            # チャンネルIDの処理
+            if channel_id == "current_channel":
+                # 現在のメッセージのチャンネルを使用
+                if isinstance(message.channel, discord.TextChannel):
+                    channel = message.channel
+                    self.logger.info(f"✅ 現在のチャンネルを使用: {channel.name}")
+                else:
+                    return {
+                        "success": False,
+                        "error": "現在のメッセージはテキストチャンネルではありません"
+                    }
+            else:
+                # 数値のチャンネルIDの場合
+                try:
+                    channel_id = int(channel_id)
+                    channel = self.bot.get_channel(channel_id)
+                    if not channel or not isinstance(channel, discord.TextChannel):
+                        self.logger.error(f"❌ チャンネルが見つからないか、テキストチャンネルではありません - ID: {channel_id}")
+                        return {
+                            "success": False,
+                            "error": "指定されたチャンネルが見つかりません"
+                        }
+                except ValueError:
+                    return {
+                        "success": False,
+                        "error": "無効なチャンネルIDです"
+                    }
             
             self.logger.info(f"✅ チャンネル取得成功: {channel.name}")
             
