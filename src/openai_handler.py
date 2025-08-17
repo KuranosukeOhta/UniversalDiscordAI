@@ -304,7 +304,8 @@ class OpenAIHandler:
         function_definitions: List[Dict],
         model: str = "gpt-5",
         max_completion_tokens: int = 2000,
-        temperature: float = 1.0
+        temperature: float = 1.0,
+        image_attachments: List[Dict] = None
     ) -> Dict:
         """ファンクションコール対応のレスポンスを生成"""
         
@@ -326,17 +327,64 @@ class OpenAIHandler:
         request_data = {
             "model": model,
             "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": context}
+                {"role": "system", "content": system_prompt}
             ],
             "max_completion_tokens": max_completion_tokens,
             "tools": function_definitions,
             "tool_choice": "auto"
         }
         
+        # 画像添付がある場合のメッセージ構造
+        if image_attachments:
+            self.logger.info(f"🖼️ ファンクションコール処理で画像付きメッセージ構造を構築中: {len(image_attachments)}個の画像")
+            
+            # 画像付きメッセージの場合
+            user_message = {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": context}
+                ]
+            }
+            
+            # 画像を追加
+            for i, image_data in enumerate(image_attachments):
+                image_content = {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": image_data["url"],
+                        "detail": image_data.get("detail", "auto")
+                    }
+                }
+                user_message["content"].append(image_content)
+                
+                self.logger.info(f"画像 {i+1} をファンクションコールメッセージに追加:")
+                self.logger.info(f"  - ファイル名: {image_data['filename']}")
+                self.logger.info(f"  - URL: {image_data['url']}")
+                self.logger.info(f"  - 詳細レベル: {image_data.get('detail', 'auto')}")
+            
+            request_data["messages"].append(user_message)
+            self.logger.info(f"✅ ファンクションコール用画像付きメッセージ構造構築完了")
+        else:
+            # テキストのみのメッセージ
+            self.logger.info("📝 ファンクションコール用テキストのみのメッセージ構造を構築")
+            request_data["messages"].append({
+                "role": "user", 
+                "content": context
+            })
+        
         # GPT-5では temperature=1 がデフォルトなので、1以外の場合のみ指定
         if temperature != 1.0:
             request_data["temperature"] = temperature
+        
+        # ファンクションコール用リクエストデータの詳細をログ出力
+        self.logger.info(f"🚀 ファンクションコール用OpenAI APIリクエスト構造:")
+        self.logger.info(f"  - モデル: {model}")
+        self.logger.info(f"  - 最大トークン数: {max_completion_tokens}")
+        self.logger.info(f"  - ストリーミング: {request_data.get('stream', False)}")
+        self.logger.info(f"  - メッセージ数: {len(request_data['messages'])}")
+        self.logger.info(f"  - 関数定義: {len(function_definitions)}個")
+        if image_attachments:
+            self.logger.info(f"  - 画像添付: {len(image_attachments)}個")
         
         try:
             # レート制限チェック

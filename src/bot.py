@@ -862,14 +862,15 @@ class CharacterBot:
                 context=context,
                 character_data=self.character_data,
                 function_definitions=function_definitions,
-                max_completion_tokens=16000  # トークン制限を増加
+                max_completion_tokens=16000,  # トークン制限を増加
+                image_attachments=image_attachments
             )
             
             if not response_data["success"]:
                 # エラーの場合は通常のストリーミングレスポンスにフォールバック
                 self.logger.warning(f"❌ ファンクションコールレスポンス生成失敗: {response_data['error']}")
                 self.logger.info(f"🔄 通常のストリーミングレスポンスにフォールバック")
-                return await self._generate_streaming_response(message, context)
+                return await self._generate_streaming_response(message, context, image_attachments)
             
             # レスポンスの詳細をログ出力
             self.logger.info(f"📊 OpenAI APIレスポンス詳細: {response_data}")
@@ -879,7 +880,7 @@ class CharacterBot:
             if not choices:
                 self.logger.warning(f"⚠️ OpenAI APIレスポンスにchoicesがありません")
                 self.logger.info(f"🔄 通常のストリーミングレスポンスにフォールバック")
-                return await self._generate_streaming_response(message, context)
+                return await self._generate_streaming_response(message, context, image_attachments)
             
             choice = choices[0]
             self.logger.info(f"📋 選択されたchoice: {choice}")
@@ -894,7 +895,7 @@ class CharacterBot:
                     function_name = tool_call.get("function", {}).get("name", "不明")
                     self.logger.info(f"  📋 ツールコール {i+1}: {function_name}")
                 # ツールコールがある場合の処理
-                return await self._handle_tool_calls(message, tool_calls, message_content, context)
+                return await self._handle_tool_calls(message, tool_calls, message_content, context, image_attachments)
             else:
                 self.logger.info(f"📝 ツールコールなし - 通常のテキストレスポンスを処理")
                 # 通常のテキストレスポンス
@@ -906,19 +907,20 @@ class CharacterBot:
                 else:
                     self.logger.warning(f"⚠️ テキストレスポンスが空です")
                     self.logger.info(f"🔄 通常のストリーミングレスポンスにフォールバック")
-                    return await self._generate_streaming_response(message, context)
+                    return await self._generate_streaming_response(message, context, image_attachments)
                     
         except Exception as e:
             self.logger.error(f"ファンクションコールレスポンス生成エラー: {e}")
             # エラーの場合は通常のストリーミングレスポンスにフォールバック
-            return await self._generate_streaming_response(message, context)
+            return await self._generate_streaming_response(message, context, image_attachments)
     
     async def _handle_tool_calls(
         self, 
         message: discord.Message, 
         tool_calls: List[Dict], 
         message_content: Dict, 
-        context: str
+        context: str,
+        image_attachments: List[Dict] = None
     ) -> tuple[discord.Message, str]:
         """ツールコールを処理"""
         try:
