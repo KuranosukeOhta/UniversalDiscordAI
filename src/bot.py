@@ -6,6 +6,7 @@ Universal Discord AI - Main Bot Module
 import asyncio
 import logging
 import os
+import signal
 import sys
 from typing import Dict, List, Optional
 
@@ -109,18 +110,28 @@ class UniversalDiscordAI(commands.Bot):
         """BOT終了時の処理"""
         self.logger.info("BOTを終了中...")
         
-        # ステータスをオフラインに設定
-        try:
-            await self.change_presence(
-                status=discord.Status.offline,
-                activity=None
-            )
-            self.logger.info("BOTステータスをオフラインに設定しました")
-        except Exception as e:
-            self.logger.warning(f"ステータス変更エラー: {e}")
+        # ステータスをオフラインに設定（複数回試行）
+        for attempt in range(3):
+            try:
+                await self.change_presence(
+                    status=discord.Status.offline,
+                    activity=None
+                )
+                self.logger.info("BOTステータスをオフラインに設定しました")
+                break
+            except discord.ConnectionClosed:
+                self.logger.info("Discord接続が既に閉じられています")
+                break
+            except Exception as e:
+                self.logger.warning(f"ステータス変更エラー (試行 {attempt + 1}/3): {e}")
+                if attempt < 2:  # 最後の試行でない場合は少し待機
+                    await asyncio.sleep(0.5)
         
         # 親クラスの終了処理を呼び出し
-        await super().close()
+        try:
+            await super().close()
+        except Exception as e:
+            self.logger.warning(f"親クラスの終了処理でエラー: {e}")
         
     async def on_message(self, message: discord.Message):
         """メッセージ受信時の処理"""
@@ -215,7 +226,7 @@ class UniversalDiscordAI(commands.Bot):
         
     async def get_chat_history(self, channel) -> List[Dict]:
         """チャット履歴を取得"""
-        history_limit = self.config.get('bot_settings.chat_history_limit', 100)
+        history_limit = self.config.get('general_settings.chat_history_limit', 100)
         history = []
         
         try:
@@ -228,7 +239,9 @@ class UniversalDiscordAI(commands.Bot):
                     'author': message.author.display_name,
                     'content': message.content,
                     'timestamp': message.created_at.isoformat(),
-                    'attachments': len(message.attachments) > 0
+                    'attachments': len(message.attachments) > 0,
+                    'id': message.id,
+                    'is_reply': message.reference is not None
                 }
                 history.append(history_item)
                 
@@ -239,6 +252,37 @@ class UniversalDiscordAI(commands.Bot):
             self.logger.error(f"チャット履歴取得中にエラー: {e}")
             
         return history
+    
+    async def get_reply_context(self, message: discord.Message) -> Dict:
+        """返信先のメッセージコンテキストを取得"""
+        if not message.reference:
+            return None
+            
+        try:
+            # 返信先のメッセージを取得
+            referenced_message = await message.channel.fetch_message(message.reference.message_id)
+            
+            if referenced_message:
+                # 返信先のメッセージがBOTの場合は除外
+                if referenced_message.author.bot:
+                    self.logger.debug(f"返信先メッセージはBOTのため除外: {referenced_message.author}")
+                    return None
+                    
+                return {
+                    'author': referenced_message.author.display_name,
+                    'content': referenced_message.content,
+                    'timestamp': referenced_message.created_at.isoformat(),
+                    'attachments': len(referenced_message.attachments) > 0,
+                    'id': referenced_message.id
+                }
+        except discord.NotFound:
+            self.logger.warning(f"返信先メッセージが見つかりません: {message.reference.message_id}")
+        except discord.Forbidden:
+            self.logger.warning(f"返信先メッセージへのアクセス権限がありません: {message.reference.message_id}")
+        except Exception as e:
+            self.logger.error(f"返信先メッセージ取得中にエラー: {e}")
+            
+        return None
 
 
 class CharacterBot:
@@ -253,8 +297,17 @@ class CharacterBot:
     async def generate_response(self, message: discord.Message, channel_info: Dict, chat_history: List[Dict]):
         """返答を生成して送信"""
         try:
+            # 返信先のコンテキストを取得
+            reply_context = await self.parent_bot.get_reply_context(message)
+            
+            # 返信先のコンテキスト取得状況をログ出力
+            if reply_context:
+                self.logger.info(f"返信先メッセージを取得: {reply_context['author']} -> {reply_context['content'][:50]}...")
+            else:
+                self.logger.debug("返信先メッセージなし、通常のメッセージとして処理")
+            
             # コンテキストを構築
-            context = self.build_context(message, channel_info, chat_history)
+            context = self.build_context(message, channel_info, chat_history, reply_context)
             
             # トークン数チェック
             if not self.parent_bot.token_counter.check_context_limit(context):
@@ -295,7 +348,7 @@ class CharacterBot:
             except:
                 pass
                 
-    def build_context(self, message: discord.Message, channel_info: Dict, chat_history: List[Dict]) -> str:
+    def build_context(self, message: discord.Message, channel_info: Dict, chat_history: List[Dict], reply_context: Dict = None) -> str:
         """AIへ送信するコンテキストを構築"""
         context_parts = []
         
@@ -308,16 +361,32 @@ class CharacterBot:
         context_parts.append(f"チャンネルトピック: {channel_info['topic']}")
         context_parts.append(f"チャンネルタイプ: {channel_info['type']}")
         
+        # 返信先のメッセージ（存在する場合）
+        if reply_context:
+            context_parts.append(f"\n# 返信先のメッセージ")
+            context_parts.append(f"{reply_context['author']}: {reply_context['content']}")
+            if reply_context.get('attachments', False):
+                context_parts.append(f"（添付ファイルあり）")
+            context_parts.append(f"（このメッセージへの返信として、以下のメッセージが送信されました）")
+        
         # チャット履歴
         if chat_history:
             context_parts.append(f"\n# 最近のチャット履歴")
             for item in chat_history[-20:]:  # 直近20件
+                # 返信先のメッセージは履歴から除外（重複を避けるため）
+                if reply_context and item['id'] == reply_context['id']:
+                    continue
                 context_parts.append(f"{item['author']}: {item['content']}")
                 
         # 現在のメッセージ
         context_parts.append(f"\n# 現在のメッセージ")
         context_parts.append(f"{message.author.display_name}: {message.content}")
-        context_parts.append(f"\n上記のメッセージに対して、設定された人格で返答してください。")
+        
+        # 返信の場合の指示
+        if reply_context:
+            context_parts.append(f"\n上記の返信先メッセージに対して、設定された人格で適切に返答してください。")
+        else:
+            context_parts.append(f"\n上記のメッセージに対して、設定された人格で返答してください。")
         
         return "\n".join(context_parts)
 
@@ -335,24 +404,39 @@ async def main():
         print("エラー: OPENAI_API_KEY が設定されていません")
         sys.exit(1)
         
-    # BOTインスタンスを作成して実行
+    # BOTインスタンスを作成
     bot = UniversalDiscordAI()
+    
+    # シグナルハンドラーを設定
+    def signal_handler(signum, frame):
+        """シグナル受信時の処理"""
+        print(f"\nシグナル {signum} を受信しました。BOTを停止しています...")
+        asyncio.create_task(shutdown_bot(bot))
+    
+    async def shutdown_bot(bot_instance):
+        """BOTの適切な終了処理"""
+        try:
+            print("BOTを適切に終了中...")
+            await bot_instance.close()
+            print("BOTを正常に停止しました")
+            # イベントループを停止
+            asyncio.get_event_loop().stop()
+        except Exception as e:
+            print(f"BOT停止中にエラー: {e}")
+            sys.exit(1)
+    
+    # SIGINT (Ctrl+C) と SIGTERM のハンドラーを設定
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     
     try:
         await bot.start(token)
     except KeyboardInterrupt:
-        print("\nBOTを停止しています...")
-        try:
-            await bot.close()
-            print("BOTを正常に停止しました")
-        except Exception as e:
-            print(f"BOT停止中にエラー: {e}")
+        print("\nキーボードインタラプトを検出しました。BOTを停止しています...")
+        await shutdown_bot(bot)
     except Exception as e:
         print(f"BOT実行中にエラーが発生: {e}")
-        try:
-            await bot.close()
-        except Exception as close_error:
-            print(f"BOT停止中にエラー: {close_error}")
+        await shutdown_bot(bot)
         sys.exit(1)
 
 
@@ -361,4 +445,10 @@ if __name__ == "__main__":
     os.makedirs('logs', exist_ok=True)
     
     # メイン実行
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nプログラムが中断されました")
+    except Exception as e:
+        print(f"予期しないエラーが発生: {e}")
+        sys.exit(1)

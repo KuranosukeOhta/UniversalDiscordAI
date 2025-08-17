@@ -20,7 +20,7 @@
     "status": "online"
   },
   "character_settings": {
-    "default_character": "friendly",
+    "default_character": "professional",
     "characters_directory": "characters",
     "parallel_characters": true
   },
