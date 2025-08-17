@@ -277,10 +277,6 @@ class OpenAIHandler:
             "tool_choice": "auto"
         }
         
-        # デバッグ用：関数定義の内容をログ出力
-        self.logger.info(f"🔧 OpenAI APIに送信する関数定義: {json.dumps(function_definitions, indent=2)}")
-        self.logger.info(f"📋 リクエストデータ: {json.dumps(request_data, indent=2)}")
-        
         # GPT-5では temperature=1 がデフォルトなので、1以外の場合のみ指定
         if temperature != 1.0:
             request_data["temperature"] = temperature
@@ -303,7 +299,6 @@ class OpenAIHandler:
                     
                     if response.status == 200:
                         response_data = await response.json()
-                        self.logger.info(f"✅ OpenAI APIレスポンス成功: {json.dumps(response_data, indent=2)}")
                         return {
                             "success": True,
                             "response": response_data,
@@ -311,7 +306,6 @@ class OpenAIHandler:
                         }
                     else:
                         error_text = await response.text()
-                        self.logger.error(f"❌ OpenAI APIエラー - HTTP {response.status}: {error_text}")
                         return {
                             "success": False,
                             "error": f"OpenAI API エラー - HTTP {response.status}: {error_text}"
