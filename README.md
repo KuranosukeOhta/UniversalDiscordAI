@@ -1,214 +1,146 @@
 # Universal Discord AI
 
-GPT-5を使用したDiscord BOTプロジェクト。複数の人格を持つAIが、メンション時に自然な会話で返答します。
+Universal Discord AIは、OpenAIのGPT-5モデルを使用した高度なDiscord BOTです。複数の人格設定に対応し、非同期処理による高パフォーマンスな会話体験を提供します。
 
-## 🌟 特徴
+## 特徴
 
-- **GPT-5 統合**: 最新のOpenAI GPT-5モデルを使用
-- **ストリーミング返答**: リアルタイムでメッセージを更新
-- **複数人格対応**: 異なる性格のBOTを並列実行
-- **コンテキスト認識**: チャンネル情報と履歴を考慮した返答
-- **動的レート制限**: API制限に応じて自動調整
-- **Docker対応**: 簡単なデプロイと管理
+- 🤖 **GPT-5対応**: 最新のOpenAI GPT-5モデルを使用
+- 🎭 **複数人格対応**: 複数の人格設定を動的に切り替え可能
+- ⚡ **非同期処理**: 高パフォーマンスな同時メッセージ処理
+- 🔄 **連続会話**: 自然な会話の流れを維持
+- 📊 **詳細ログ**: 包括的なログ出力とパフォーマンス監視
+- 🛡️ **エラー回復**: 自動的なエラー回復とヘルスチェック
 
-## 📋 必要要件
+## 設定ファイルの詳細説明
 
-- Docker & Docker Compose
-- Discord Bot Token
-- OpenAI API Key (GPT-5対応)
+### `config/config.json` - 設定ファイル
 
-## 🚀 セットアップ
+#### Discord設定 (`discord_settings`)
+- `status`: BOTのステータス表示（Discordで表示される活動内容）
+- `admin_commands_enabled`: 管理者コマンドの有効化（!status等）
+- `enable_auto_status_update`: 自動ステータス更新の有効化
+- `command_prefix`: コマンドのプレフィックス（デフォルト: !ai）
+- `enable_slash_commands`: スラッシュコマンドの有効化
+- `status_check_command`: ステータス確認コマンド（デフォルト: !status）
+- `enable_help_command`: ヘルプコマンドの有効化
 
-### 1. リポジトリのクローン
+#### BOT動作設定 (`bot_settings`)
+- `continuous_conversation_enabled`: 連続会話の有効化（前のメッセージがBOTの場合も反応）
+- `max_conversation_turns`: 最大会話ターン数
+- `max_concurrent_messages`: 最大同時処理メッセージ数
+- `message_timeout_seconds`: メッセージ処理のタイムアウト時間（秒）
+- `enable_task_cleanup`: タスククリーンアップの有効化
+- `enable_error_recovery`: エラー回復機能の有効化
+- `max_error_retries`: 最大エラーリトライ回数
+- `cleanup_interval_seconds`: クリーンアップ実行間隔（秒）
+- `enable_performance_metrics`: パフォーマンスメトリクスの有効化
 
-```bash
-git clone <your-repository-url>
-cd UniversalDiscordAI
-```
+#### 人格設定 (`character_settings`)
+- `default_character`: デフォルトで使用する人格
+- `character_switching_enabled`: 人格切り替え機能の有効化
+- `enable_character_rotation`: 人格ローテーション機能の有効化
+- `character_rotation_interval`: 人格ローテーション間隔（秒）
 
-### 2. 環境変数の設定
+#### 一般設定 (`general_settings`)
+- `chat_history_limit`: チャット履歴の取得制限数
+- `max_response_length`: 最大レスポンス長
+- `enable_streaming`: ストリーミングレスポンスの有効化
+- `enable_typing_indicator`: タイピングインジケーターの有効化
+- `typing_duration`: タイピング表示時間（秒）
+- `streaming_update_interval`: ストリーミング更新間隔（ミリ秒）
+- `enable_message_editing`: メッセージ編集機能の有効化
 
-```bash
-# env.local ファイルを編集
-cp env.example env.local
-```
+#### OpenAI API設定 (`openai_settings`)
+- `model`: 使用するAIモデル（デフォルト: gpt-5）
+- `max_completion_tokens`: 最大完了トークン数
+- `max_context_tokens`: 最大コンテキストトークン数
+- `temperature`: 創造性の度合い（0.0-1.0、GPT-5では1.0固定）
+- `timeout_seconds`: API呼び出しのタイムアウト時間（秒）
+- `retry_attempts`: リトライ試行回数
+- `enable_fallback_model`: フォールバックモデルの有効化
+- `health_check_interval`: ヘルスチェック間隔（秒）
+- `enable_rate_limit_monitoring`: レート制限監視の有効化
 
-`env.local` に以下の情報を設定：
+#### ログ設定 (`logging_settings`)
+- `log_level`: ログレベル（DEBUG, INFO, WARNING, ERROR, CRITICAL）
+- `enable_detailed_logging`: 詳細ログ出力の有効化
+- `enable_performance_monitoring`: パフォーマンス監視の有効化
+- `enable_memory_monitoring`: メモリ監視の有効化
+- `log_to_file`: ファイルログ出力の有効化
+- `log_directory`: ログディレクトリ
+- `log_to_console`: コンソールログ出力の有効化
+- `enable_color_logging`: カラーログ出力の有効化
+- `log_rotation`: ログローテーションの有効化
+- `log_retention_days`: ログ保持日数
+- `max_log_size_mb`: 最大ログファイルサイズ（MB）
+- `enable_compression`: ログ圧縮の有効化
 
-```env
-DISCORD_BOT_TOKEN=your_discord_bot_token_here
-OPENAI_API_KEY=your_openai_api_key_here
-```
+## プログラムファイルの説明
 
-### 3. Discord Bot の作成
+### 1. `src/bot.py` - メインBOT実装
+- **役割**: Discord BOTのメイン実装クラス
+- **機能**: 
+  - Discord APIとの通信管理
+  - メッセージ処理と人格設定の統合
+  - 非同期処理による同時メッセージ対応
+  - タスク管理とクリーンアップ
+  - 統計情報の収集と管理
 
-1. [Discord Developer Portal](https://discord.com/developers/applications) にアクセス
-2. 新しいアプリケーションを作成
-3. BOTセクションでBOTユーザーを作成
-4. TOKENをコピーして `env.local` に設定
-5. BOTをサーバーに招待（必要な権限: メッセージ送信、メッセージ履歴読み取り、メンション確認）
+### 2. `src/bot_async.py` - 非同期処理最適化版
+- **役割**: `bot.py`の非同期処理最適化版
+- **機能**: 
+  - より効率的な同時処理制御
+  - 設定ファイルからの動的パラメータ読み込み
+  - パフォーマンスメトリクスの強化
+  - エラー回復機能の改善
 
-### 4. OpenAI API Key の取得
+### 3. `src/character_manager.py` - 人格設定管理
+- **役割**: 複数の人格設定ファイルの管理
+- **機能**: 
+  - Markdown形式の人格設定ファイルの読み込み
+  - 人格設定の動的切り替え
+  - 人格設定の妥当性検証
+  - AIコンテキスト用の人格設定文字列生成
 
-1. [OpenAI Platform](https://platform.openai.com/api-keys) にアクセス
-2. 新しいAPI Keyを作成
-3. KEYをコピーして `env.local` に設定
+### 4. `src/openai_handler.py` - OpenAI API通信管理
+- **役割**: OpenAI APIとの通信を管理
+- **機能**: 
+  - GPT-5モデルとの通信
+  - ストリーミングレスポンスの処理
+  - レート制限の管理
+  - 接続状態の監視と自動復元
+  - エラーハンドリングとリトライ機能
 
-### 5. Docker でのビルドと実行
+### 5. `src/utils.py` - 共通ユーティリティ
+- **役割**: 共通のユーティリティ関数とクラス
+- **機能**: 
+  - 設定ファイル管理
+  - トークン数カウントと制限管理
+  - ログ設定と管理
+  - 費用計算
+  - 詳細ログ出力
 
-```bash
-# ビルドと起動
-docker-compose up --build -d
+## セットアップ
 
-# ログの確認
-docker-compose logs -f discord-ai
+詳細なセットアップ手順は [SETUP.md](SETUP.md) を参照してください。
 
-# 停止
-docker-compose down
-```
+## 使用方法
 
-## ⚙️ 設定
+1. 環境変数を設定（`env.local`ファイル）
+2. 人格設定ファイルを`characters/`ディレクトリに配置
+3. `python src/bot.py` または `python src/bot_async.py` で実行
 
-### config/config.json
+## 人格設定
 
-```json
-{
-  "bot_settings": {
-    "chat_history_limit": 100,          // 取得するチャット履歴数
-    "context_token_limit": 125000,      // コンテキスト制限
-    "typing_indicator_enabled": true    // タイピング表示
-  },
-  "openai_settings": {
-    "model": "gpt-5",                   // 使用するモデル
-    "max_tokens": 2000,                 // 最大トークン数
-    "temperature": 0.7                  // 創造性レベル
-  }
-}
-```
+人格設定は`characters/`ディレクトリ内のMarkdownファイルで管理されます。各ファイルには以下のセクションを含めることができます：
 
-## 🎭 人格設定
+- 基本性格
+- 話し方・口調
+- 専門分野・得意なこと
+- 返答例
+- 避けるべき表現・行動
+- その他の特徴
 
-`characters/` フォルダに Markdown 形式で人格を定義：
-
-### 例: characters/friendly.md
-
-```markdown
-# 人格名: フレンドリー
-
-## 基本性格
-親しみやすく、明るい性格で返答します。
-
-## 話し方の特徴
-- 敬語は使わず、親しみやすい口調
-- 絵文字を適度に使用
-- 相手の気持ちに寄り添う
-
-## 専門分野・得意なこと
-- 雑談・日常会話
-- 悩み相談・メンタルサポート
-```
-
-### デフォルト人格
-
-- **friendly**: 親しみやすい性格
-- **professional**: 専門的で丁寧
-- **creative**: 創造的でアーティスティック
-
-## 🔧 使用方法
-
-1. BOTをDiscordサーバーに招待
-2. チャンネルでBOTをメンション: `@Universal Discord AI こんにちは！`
-3. BOTが人格設定に従って返答
-
-## 📊 監視とログ
-
-### ログファイル
-
-- `logs/discord_ai.log`: 全ての動作ログ
-- Docker logs: `docker-compose logs discord-ai`
-
-### ヘルスチェック
-
-```bash
-# BOTの状態確認
-docker-compose ps
-
-# 詳細なヘルスチェック
-docker exec universal-discord-ai python -c "import asyncio; print('Bot is running')"
-```
-
-## 🛠️ 開発・カスタマイズ
-
-### プロジェクト構造
-
-```
-UniversalDiscordAI/
-├── src/
-│   ├── bot.py                 # メインBOTロジック
-│   ├── character_manager.py   # 人格管理
-│   ├── openai_handler.py      # OpenAI API処理
-│   └── utils.py              # ユーティリティ
-├── characters/               # 人格設定ファイル
-├── config/                  # 設定ファイル
-├── logs/                    # ログファイル
-├── docker-compose.yml       # Docker設定
-└── Dockerfile              # コンテナ設定
-```
-
-### 新しい人格の追加
-
-1. `characters/new_personality.md` を作成
-2. Markdown形式で人格を定義
-3. BOTを再起動
-
-### 設定の変更
-
-1. `config/config.json` を編集
-2. BOTを再起動
-
-## 🔍 トラブルシューティング
-
-### よくある問題
-
-**BOTが返答しない**
-- BOTが正しくメンションされているか確認
-- Discord BOTの権限を確認
-- ログでエラーを確認: `docker-compose logs discord-ai`
-
-**OpenAI API エラー**
-- API Keyが正しく設定されているか確認
-- OpenAIアカウントの利用制限を確認
-- GPT-5へのアクセス権限を確認
-
-**コンテキスト制限エラー**
-- `chat_history_limit` を減らす
-- 長すぎるメッセージを避ける
-
-### デバッグモード
-
-```bash
-# 開発モードで起動
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
-
-# ログレベルをDEBUGに変更
-# config/config.json の logging.level を "DEBUG" に設定
-```
-
-## 📝 ライセンス
+## ライセンス
 
 このプロジェクトはMITライセンスの下で公開されています。
-
-## 🤝 コントリビューション
-
-1. このリポジトリをフォーク
-2. フィーチャーブランチを作成
-3. 変更をコミット
-4. プルリクエストを作成
-
-## 📞 サポート
-
-問題や質問がある場合は、GitHubのIssuesページでお知らせください。
-
----
-
-**Universal Discord AI** - GPT-5を使用した次世代Discord BOT
