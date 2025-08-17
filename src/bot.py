@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 from character_manager import CharacterManager
 from openai_handler import OpenAIHandler
-from utils import ConfigManager, setup_logging, TokenCounter
+from utils import ConfigManager, setup_logging, TokenCounter, DetailedLogger
 
 # 環境変数を読み込み
 load_dotenv('env.local')
@@ -49,6 +49,7 @@ class UniversalDiscordAI(commands.Bot):
         
         # ログ設定
         self.logger = setup_logging()
+        self.detailed_logger = DetailedLogger(self.config)
         
     async def setup_hook(self):
         """BOT起動時の初期設定"""
@@ -73,6 +74,15 @@ class UniversalDiscordAI(commands.Bot):
         """BOT接続完了時の処理"""
         self.logger.info(f'{self.user} として Discord に接続しました')
         self.logger.info(f'サーバー数: {len(self.guilds)}')
+        
+        # 各サーバーの詳細ログ出力
+        for guild in self.guilds:
+            self.detailed_logger.log_server_activity(
+                server_name=guild.name,
+                server_id=str(guild.id),
+                action="BOT接続完了",
+                details=f"メンバー数: {guild.member_count}, チャンネル数: {len(guild.channels)}"
+            )
         
         # BOTステータスをオンラインに設定
         activity = discord.Activity(
@@ -155,6 +165,7 @@ class UniversalDiscordAI(commands.Bot):
             
         # メンションチェック（個人メンションまたはBOTロールメンション）
         is_mentioned = self.user.mentioned_in(message)
+        mention_type = "個人メンション"
         
         # ロールメンションもチェック
         if not is_mentioned and message.guild:
@@ -163,8 +174,19 @@ class UniversalDiscordAI(commands.Bot):
                 for role in bot_member.roles:
                     if role.id in message.raw_role_mentions:
                         is_mentioned = True
+                        mention_type = f"ロールメンション ({role.name})"
                         self.logger.debug(f"ロールメンション検知: {role.name}")
                         break
+        
+        # 詳細ログ出力
+        if message.guild:
+            self.detailed_logger.log_mention_detection(
+                server_name=message.guild.name,
+                channel_name=message.channel.name,
+                user_name=message.author.display_name,
+                mention_type=mention_type,
+                message_content=message.content
+            )
         
         # デバッグ用ログ
         self.logger.debug(f"メッセージ受信: {message.author} -> {message.content}")
@@ -178,8 +200,10 @@ class UniversalDiscordAI(commands.Bot):
         
     async def handle_mention(self, message: discord.Message):
         """メンション時の返答処理"""
+        start_time = asyncio.get_event_loop().time()
+        
         try:
-            # typing indicator開始
+            # typing indicator開始（入力中ステータスを表示）
             async with message.channel.typing():
                 # チャンネル情報を取得
                 channel_info = await self.get_channel_info(message.channel)
@@ -194,6 +218,16 @@ class UniversalDiscordAI(commands.Bot):
                 if not character_bot:
                     await message.reply("申し訳ございません。人格設定の読み込みに失敗しました。")
                     return
+                
+                # キャラクター選択の詳細ログ
+                if message.guild:
+                    available_characters = list(self.character_bots.keys())
+                    self.detailed_logger.log_character_selection(
+                        server_name=message.guild.name,
+                        channel_name=message.channel.name,
+                        selected_character=character_name,
+                        available_characters=available_characters
+                    )
                 
                 # 返答生成タスクを開始
                 response_task = asyncio.create_task(
@@ -210,8 +244,31 @@ class UniversalDiscordAI(commands.Bot):
                 # 返答完了まで待機
                 await response_task
                 
+                # 成功時のレスポンス時間ログ
+                response_time = asyncio.get_event_loop().time() - start_time
+                if message.guild:
+                    self.detailed_logger.log_response_time(
+                        operation="メンション処理",
+                        response_time=response_time,
+                        success=True
+                    )
+                
         except Exception as e:
-            self.logger.error(f"メンション処理中にエラーが発生: {e}")
+            # エラー時の詳細ログ
+            response_time = asyncio.get_event_loop().time() - start_time
+            if message.guild:
+                self.detailed_logger.log_error_detail(
+                    error=e,
+                    context=f"メンション処理 - サーバー: {message.guild.name}, チャンネル: #{message.channel.name}",
+                    additional_info=f"ユーザー: {message.author.display_name}, レスポンス時間: {response_time:.2f}秒"
+                )
+            else:
+                self.detailed_logger.log_error_detail(
+                    error=e,
+                    context="メンション処理 - DM",
+                    additional_info=f"ユーザー: {message.author.display_name}, レスポンス時間: {response_time:.2f}秒"
+                )
+            
             await message.reply(f"エラーが発生しました: {str(e)}")
         finally:
             # タスクをクリーンアップ
@@ -306,6 +363,8 @@ class CharacterBot:
         
     async def generate_response(self, message: discord.Message, channel_info: Dict, chat_history: List[Dict]):
         """返答を生成して送信"""
+        start_time = asyncio.get_event_loop().time()
+        
         try:
             # 返信先のコンテキストを取得
             reply_context = await self.parent_bot.get_reply_context(message)
@@ -325,17 +384,29 @@ class CharacterBot:
                 return
                 
             # OpenAI APIで返答生成（ストリーミング）
-            response_message = await message.reply("考え中...")
-            
+            response_message = None
             full_response = ""
+            is_first_chunk = True
+            
             async for chunk in self.parent_bot.openai_handler.generate_streaming_response(
                 context=context,
                 character_data=self.character_data
             ):
                 full_response += chunk
                 
-                # 定期的にメッセージを更新
-                if len(full_response) % 100 == 0:  # 100文字ごとに更新
+                # 最初のチャンクの場合、メッセージを送信
+                if is_first_chunk:
+                    try:
+                        response_message = await message.reply(full_response[:2000])
+                        is_first_chunk = False
+                        self.logger.debug(f"初回メッセージ送信完了: {len(full_response)}文字")
+                    except Exception as e:
+                        self.logger.error(f"初回メッセージ送信エラー: {e}")
+                        # 初回送信に失敗した場合は、次のチャンクで再試行
+                        continue
+                
+                # 2番目以降のチャンクの場合、メッセージを編集更新
+                elif response_message and len(full_response) % 100 == 0:  # 100文字ごとに更新
                     try:
                         await response_message.edit(content=full_response[:2000])  # Discord制限
                     except discord.NotFound:
@@ -345,14 +416,47 @@ class CharacterBot:
                         # 編集制限に達した場合
                         pass
                         
-            # 最終的な返答を設定
-            try:
-                await response_message.edit(content=full_response[:2000])
-            except discord.NotFound:
-                pass
+            # 最終的な返答を設定（初回送信が失敗していた場合のフォールバック）
+            if not response_message and full_response:
+                try:
+                    response_message = await message.reply(full_response[:2000])
+                except Exception as e:
+                    self.logger.error(f"フォールバックメッセージ送信エラー: {e}")
+            elif response_message and full_response:
+                try:
+                    await response_message.edit(content=full_response[:2000])
+                except discord.NotFound:
+                    pass
+            
+            # 成功時の詳細ログ
+            response_time = asyncio.get_event_loop().time() - start_time
+            if message.guild:
+                self.parent_bot.detailed_logger.log_message_generation(
+                    server_name=message.guild.name,
+                    channel_name=message.channel.name,
+                    user_name=message.author.display_name,
+                    character_name=self.character_name,
+                    response_time=response_time,
+                    token_count=len(full_response.split()),  # 簡易的なトークン数推定
+                    message_sent=response_message is not None
+                )
                 
         except Exception as e:
-            self.logger.error(f"返答生成中にエラー: {e}")
+            # エラー時の詳細ログ
+            response_time = asyncio.get_event_loop().time() - start_time
+            if message.guild:
+                self.parent_bot.detailed_logger.log_error_detail(
+                    error=e,
+                    context=f"返答生成 - サーバー: {message.guild.name}, チャンネル: #{message.channel.name}",
+                    additional_info=f"ユーザー: {message.author.display_name}, キャラクター: {self.character_name}, レスポンス時間: {response_time:.2f}秒"
+                )
+            else:
+                self.parent_bot.detailed_logger.log_error_detail(
+                    error=e,
+                    context="返答生成 - DM",
+                    additional_info=f"ユーザー: {message.author.display_name}, キャラクター: {self.character_name}, レスポンス時間: {response_time:.2f}秒"
+                )
+            
             try:
                 await message.reply(f"申し訳ございません。エラーが発生しました: {str(e)}")
             except:
