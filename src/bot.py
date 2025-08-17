@@ -819,7 +819,8 @@ class CharacterBot:
             response_data = await self.parent_bot.openai_handler.generate_response_with_function_calls(
                 context=context,
                 character_data=self.character_data,
-                function_definitions=function_definitions
+                function_definitions=function_definitions,
+                max_completion_tokens=16000  # トークン制限を増加
             )
             
             if not response_data["success"]:
