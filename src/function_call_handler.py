@@ -77,33 +77,56 @@ class FunctionCallHandler:
     
     async def execute_function_call(self, function_name: str, arguments: Dict, message: discord.Message) -> Dict:
         """ファンクションコールを実行"""
+        self.logger.info(f"🔧 ファンクションコール実行開始: {function_name}")
+        self.logger.info(f"👤 実行ユーザー: {message.author.display_name} (ID: {message.author.id})")
+        self.logger.info(f"📍 チャンネル: #{message.channel.name} (ID: {message.channel.id})")
+        self.logger.info(f"📋 引数: {arguments}")
+        
         if not self.enabled:
+            self.logger.warning(f"❌ ファンクションコール機能が無効化されています")
             return {
                 "success": False,
                 "error": "ファンクションコールが無効化されています"
             }
         
         # 管理者権限チェック
-        if self.require_admin and not await self._check_admin_permission(message):
-            return {
-                "success": False,
-                "error": "管理者権限が必要です"
-            }
+        if self.require_admin:
+            self.logger.info(f"🔐 管理者権限チェック開始")
+            has_permission = await self._check_admin_permission(message)
+            self.logger.info(f"🔐 管理者権限チェック結果: {has_permission}")
+            
+            if not has_permission:
+                self.logger.warning(f"❌ 管理者権限が不足: {message.author.display_name}")
+                return {
+                    "success": False,
+                    "error": "管理者権限が必要です"
+                }
+        else:
+            self.logger.info(f"🔓 管理者権限チェックをスキップ")
         
         # 関数の存在チェック
-        if function_name not in [func["name"] for func in self.available_functions]:
+        available_function_names = [func["name"] for func in self.available_functions]
+        self.logger.info(f"📋 利用可能な関数: {available_function_names}")
+        
+        if function_name not in available_function_names:
+            self.logger.error(f"❌ 不明な関数: {function_name}")
             return {
                 "success": False,
                 "error": f"不明な関数: {function_name}"
             }
         
         try:
+            self.logger.info(f"🚀 関数実行開始: {function_name}")
+            
             # 関数の実行
             if function_name == "edit_thread_name":
+                self.logger.info(f"📝 スレッド名変更関数を実行")
                 result = await self._edit_thread_name(arguments, message)
             elif function_name == "edit_channel_name":
+                self.logger.info(f"📝 チャンネル名変更関数を実行")
                 result = await self._edit_channel_name(arguments, message)
             else:
+                self.logger.error(f"❌ 未実装の関数: {function_name}")
                 result = {
                     "success": False,
                     "error": f"未実装の関数: {function_name}"
@@ -111,15 +134,16 @@ class FunctionCallHandler:
             
             # ログ出力
             if result["success"]:
-                self.logger.info(f"ファンクションコール成功: {function_name} - {message.author.display_name}")
+                self.logger.info(f"✅ ファンクションコール成功: {function_name} - {message.author.display_name}")
             else:
-                self.logger.error(f"ファンクションコール失敗: {function_name} - {result['error']}")
+                self.logger.error(f"❌ ファンクションコール失敗: {function_name} - {result['error']}")
             
             return result
             
         except Exception as e:
             error_msg = f"ファンクションコール実行中にエラー: {str(e)}"
-            self.logger.error(error_msg)
+            self.logger.error(f"❌ {error_msg}")
+            self.logger.error(f"📋 エラー詳細: {type(e).__name__}: {str(e)}")
             return {
                 "success": False,
                 "error": error_msg
@@ -153,16 +177,23 @@ class FunctionCallHandler:
             thread_id = int(arguments.get("thread_id"))
             new_name = arguments.get("new_name")
             
+            self.logger.info(f"📝 スレッド名変更開始 - スレッドID: {thread_id}, 新しい名前: {new_name}")
+            
             # スレッドの取得
             thread = self.bot.get_channel(thread_id)
             if not thread or not isinstance(thread, discord.Thread):
+                self.logger.error(f"❌ スレッドが見つからないか、スレッドではありません - ID: {thread_id}")
                 return {
                     "success": False,
                     "error": "指定されたスレッドが見つかりません"
                 }
             
+            self.logger.info(f"✅ スレッド取得成功: {thread.name}")
+            
             # スレッド名の変更
+            self.logger.info(f"🔄 スレッド名を変更中: {thread.name} → {new_name}")
             await thread.edit(name=new_name)
+            self.logger.info(f"✅ スレッド名変更完了")
             
             return {
                 "success": True,
@@ -172,16 +203,19 @@ class FunctionCallHandler:
             }
             
         except ValueError:
+            self.logger.error(f"❌ 無効なスレッドID: {arguments.get('thread_id')}")
             return {
                 "success": False,
                 "error": "無効なスレッドIDです"
             }
         except discord.Forbidden:
+            self.logger.error(f"❌ スレッド名変更権限が不足")
             return {
                 "success": False,
                 "error": "スレッド名を変更する権限がありません"
             }
         except Exception as e:
+            self.logger.error(f"❌ スレッド名変更中にエラー: {str(e)}")
             return {
                 "success": False,
                 "error": f"スレッド名変更中にエラー: {str(e)}"
@@ -193,16 +227,23 @@ class FunctionCallHandler:
             channel_id = int(arguments.get("channel_id"))
             new_name = arguments.get("new_name")
             
+            self.logger.info(f"📝 チャンネル名変更開始 - チャンネルID: {channel_id}, 新しい名前: {new_name}")
+            
             # チャンネルの取得
             channel = self.bot.get_channel(channel_id)
             if not channel or not isinstance(channel, discord.TextChannel):
+                self.logger.error(f"❌ チャンネルが見つからないか、テキストチャンネルではありません - ID: {channel_id}")
                 return {
                     "success": False,
                     "error": "指定されたチャンネルが見つかりません"
                 }
             
+            self.logger.info(f"✅ チャンネル取得成功: {channel.name}")
+            
             # チャンネル名の変更
+            self.logger.info(f"🔄 チャンネル名を変更中: {channel.name} → {new_name}")
             await channel.edit(name=new_name)
+            self.logger.info(f"✅ チャンネル名変更完了")
             
             return {
                 "success": True,
@@ -212,16 +253,19 @@ class FunctionCallHandler:
             }
             
         except ValueError:
+            self.logger.error(f"❌ 無効なチャンネルID: {arguments.get('channel_id')}")
             return {
                 "success": False,
                 "error": "無効なチャンネルIDです"
             }
         except discord.Forbidden:
+            self.logger.error(f"❌ チャンネル名変更権限が不足")
             return {
                 "success": False,
                 "error": "チャンネル名を変更する権限がありません"
             }
         except Exception as e:
+            self.logger.error(f"❌ チャンネル名変更中にエラー: {str(e)}")
             return {
                 "success": False,
                 "error": f"チャンネル名変更中にエラー: {str(e)}"

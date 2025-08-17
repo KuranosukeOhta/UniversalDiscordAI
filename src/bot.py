@@ -684,12 +684,17 @@ class CharacterBot:
             function_definitions = self.parent_bot.function_call_handler.get_function_definitions()
             use_function_calls = len(function_definitions) > 0 and self.parent_bot.function_call_handler.enabled
             
+            # ファンクションコール機能の状態をログ出力
+            self.logger.info(f"ファンクションコール機能チェック - 有効: {use_function_calls}, 利用可能関数数: {len(function_definitions)}")
+            
             if use_function_calls:
+                self.logger.info(f"🔧 ファンクションコール対応のレスポンス生成を開始 - ユーザー: {message.author.display_name}, チャンネル: #{message.channel.name}")
                 # ファンクションコール対応のレスポンス生成
                 response_message, full_response = await self._generate_response_with_function_calls(
                     message, context, channel_info, chat_history, reply_context
                 )
             else:
+                self.logger.info(f"📝 従来のストリーミングレスポンス生成を開始 - ユーザー: {message.author.display_name}, チャンネル: #{message.channel.name}")
                 # 従来のストリーミングレスポンス生成
                 response_message, full_response = await self._generate_streaming_response(message, context)
                         
@@ -800,8 +805,10 @@ class CharacterBot:
         try:
             # ファンクション定義を取得
             function_definitions = self.parent_bot.function_call_handler.get_function_definitions()
+            self.logger.info(f"🔧 ファンクション定義を取得完了 - 関数数: {len(function_definitions)}")
             
             # OpenAI APIでファンクションコール対応のレスポンス生成
+            self.logger.info(f"🚀 OpenAI APIでファンクションコール対応レスポンス生成を開始")
             response_data = await self.parent_bot.openai_handler.generate_response_with_function_calls(
                 context=context,
                 character_data=self.character_data,
@@ -810,28 +817,40 @@ class CharacterBot:
             
             if not response_data["success"]:
                 # エラーの場合は通常のストリーミングレスポンスにフォールバック
-                self.logger.warning(f"ファンクションコールレスポンス生成失敗: {response_data['error']}")
+                self.logger.warning(f"❌ ファンクションコールレスポンス生成失敗: {response_data['error']}")
+                self.logger.info(f"🔄 通常のストリーミングレスポンスにフォールバック")
                 return await self._generate_streaming_response(message, context)
             
             # レスポンスからツールコールをチェック
             choices = response_data.get("choices", [])
             if not choices:
+                self.logger.warning(f"⚠️ OpenAI APIレスポンスにchoicesがありません")
+                self.logger.info(f"🔄 通常のストリーミングレスポンスにフォールバック")
                 return await self._generate_streaming_response(message, context)
             
             choice = choices[0]
             message_content = choice.get("message", {})
             tool_calls = message_content.get("tool_calls", [])
             
+            # ツールコールの有無をログ出力
             if tool_calls:
+                self.logger.info(f"🔧 ツールコールを検出: {len(tool_calls)}個の関数呼び出し")
+                for i, tool_call in enumerate(tool_calls):
+                    function_name = tool_call.get("function", {}).get("name", "不明")
+                    self.logger.info(f"  📋 ツールコール {i+1}: {function_name}")
                 # ツールコールがある場合の処理
                 return await self._handle_tool_calls(message, tool_calls, message_content, context)
             else:
+                self.logger.info(f"📝 ツールコールなし - 通常のテキストレスポンスを処理")
                 # 通常のテキストレスポンス
                 content = message_content.get("content", "")
                 if content:
+                    self.logger.info(f"✅ テキストレスポンスを送信: {len(content)}文字")
                     response_message = await message.reply(content)
                     return response_message, content
                 else:
+                    self.logger.warning(f"⚠️ テキストレスポンスが空です")
+                    self.logger.info(f"🔄 通常のストリーミングレスポンスにフォールバック")
                     return await self._generate_streaming_response(message, context)
                     
         except Exception as e:
@@ -853,23 +872,35 @@ class CharacterBot:
             function_name = tool_call.get("function", {}).get("name")
             arguments = tool_call.get("function", {}).get("arguments", "{}")
             
+            self.logger.info(f"🔧 ツールコール処理開始 - 関数: {function_name}")
+            self.logger.info(f"📋 引数: {arguments}")
+            
             # 引数をパース
             import json
             try:
                 parsed_args = json.loads(arguments)
-            except json.JSONDecodeError:
+                self.logger.info(f"✅ 引数のパース成功: {parsed_args}")
+            except json.JSONDecodeError as e:
+                self.logger.error(f"❌ 引数のパース失敗: {e}")
                 parsed_args = {}
             
             # ファンクションコールを実行
+            self.logger.info(f"🚀 ファンクションコール実行開始: {function_name}")
             result = await self.parent_bot.function_call_handler.execute_function_call(
                 function_name, parsed_args, message
             )
             
+            # 結果をログ出力
+            self.logger.info(f"📊 ファンクションコール実行結果: {result}")
+            
             # 結果をフォーマット
             result_message = self.parent_bot.function_call_handler.format_function_result_for_ai(result)
+            self.logger.info(f"📝 フォーマット済み結果: {result_message}")
             
             # 結果を送信
+            self.logger.info(f"📤 結果をDiscordに送信中...")
             response_message = await message.reply(result_message)
+            self.logger.info(f"✅ 結果送信完了")
             
             return response_message, result_message
             
