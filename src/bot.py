@@ -55,8 +55,10 @@ class UniversalDiscordAI(commands.Bot):
         self.config = ConfigManager()
         self.character_manager = CharacterManager()
         self.openai_handler = OpenAIHandler()
-        self.function_call_handler = FunctionCallHandler(self, self.config.config)
         self.token_counter = TokenCounter()
+        
+        # ファンクションコールハンドラはsetup_hookで初期化
+        self.function_call_handler = None
         
         # BOTインスタンスの管理
         self.character_bots: Dict[str, 'CharacterBot'] = {}
@@ -84,6 +86,11 @@ class UniversalDiscordAI(commands.Bot):
     async def setup_hook(self):
         """BOT起動時の初期設定"""
         self.logger.info("Universal Discord AI を初期化中...")
+        
+        # ファンクションコールハンドラの初期化
+        self.logger.info(f"設定ファイルの内容: {self.config.config}")
+        self.function_call_handler = FunctionCallHandler(self, self.config)
+        self.logger.info(f"ファンクションコールハンドラ初期化完了 - 有効: {self.function_call_handler.enabled}")
         
         # 人格設定を読み込み
         characters = await self.character_manager.load_all_characters()
@@ -821,6 +828,9 @@ class CharacterBot:
                 self.logger.info(f"🔄 通常のストリーミングレスポンスにフォールバック")
                 return await self._generate_streaming_response(message, context)
             
+            # レスポンスの詳細をログ出力
+            self.logger.info(f"📊 OpenAI APIレスポンス詳細: {response_data}")
+            
             # レスポンスからツールコールをチェック
             choices = response_data.get("choices", [])
             if not choices:
@@ -829,7 +839,9 @@ class CharacterBot:
                 return await self._generate_streaming_response(message, context)
             
             choice = choices[0]
+            self.logger.info(f"📋 選択されたchoice: {choice}")
             message_content = choice.get("message", {})
+            self.logger.info(f"📝 message_content: {message_content}")
             tool_calls = message_content.get("tool_calls", [])
             
             # ツールコールの有無をログ出力

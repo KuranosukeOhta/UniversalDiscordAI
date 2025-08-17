@@ -17,13 +17,20 @@ class FunctionCallHandler:
         self.config = config
         self.logger = logging.getLogger(__name__)
         
+        # 設定の内容をログ出力
+        self.logger.info(f"FunctionCallHandler初期化開始")
+        self.logger.info(f"受け取った設定: {config}")
+        
         # ファンクションコール設定
         self.enabled = config.get('function_call_settings.enabled', False)
         self.allowed_operations = config.get('function_call_settings.allowed_operations', [])
         self.require_admin = config.get('function_call_settings.require_admin', True)
         
+        self.logger.info(f"ファンクションコール設定 - 有効: {self.enabled}, 操作: {self.allowed_operations}, 管理者要求: {self.require_admin}")
+        
         # 利用可能な関数の定義
         self.available_functions = self._define_available_functions()
+        self.logger.info(f"利用可能な関数定義完了: {len(self.available_functions)}個")
         
     def _define_available_functions(self) -> List[Dict]:
         """利用可能な関数の定義を返す"""
@@ -31,41 +38,47 @@ class FunctionCallHandler:
         
         if "edit_thread" in self.allowed_operations:
             functions.append({
-                "name": "edit_thread_name",
-                "description": "Discordスレッドの名前を変更します",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "thread_id": {
-                            "type": "string",
-                            "description": "変更したいスレッドのID"
+                "type": "function",
+                "function": {
+                    "name": "edit_thread_name",
+                    "description": "Discordスレッドの名前を変更します",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "thread_id": {
+                                "type": "string",
+                                "description": "変更したいスレッドのID"
+                            },
+                            "new_name": {
+                                "type": "string",
+                                "description": "新しいスレッド名"
+                            }
                         },
-                        "new_name": {
-                            "type": "string",
-                            "description": "新しいスレッド名"
-                        }
-                    },
-                    "required": ["thread_id", "new_name"]
+                        "required": ["thread_id", "new_name"]
+                    }
                 }
             })
             
         if "edit_channel" in self.allowed_operations:
             functions.append({
-                "name": "edit_channel_name",
-                "description": "Discordチャンネルの名前を変更します",
-                "parameters": {
-                    "type": "object",
+                "type": "function",
+                "function": {
+                    "name": "edit_channel_name",
+                    "description": "Discordチャンネルの名前を変更します",
                     "parameters": {
-                        "channel_id": {
-                            "type": "string",
-                            "description": "変更したいチャンネルのID"
+                        "type": "object",
+                        "properties": {
+                            "channel_id": {
+                                "type": "string",
+                                "description": "変更したいチャンネルのID"
+                            },
+                            "new_name": {
+                                "type": "string",
+                                "description": "新しいチャンネル名"
+                            }
                         },
-                        "new_name": {
-                            "type": "string",
-                            "description": "新しいチャンネル名"
-                        }
-                    },
-                    "required": ["channel_id", "new_name"]
+                        "required": ["channel_id", "new_name"]
+                    }
                 }
             })
             
