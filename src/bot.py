@@ -148,7 +148,7 @@ class UniversalDiscordAI(commands.Bot):
         
         # BOTステータスをオンラインに設定
         activity = discord.Activity(
-            type=discord.ActivityType.watching,
+            type=discord.ActivityType.competing,
                             name=self.config.get('discord_settings.status', 'みんなの会話')
         )
         await self.change_presence(
@@ -175,7 +175,7 @@ class UniversalDiscordAI(commands.Bot):
         # 再接続時にステータスを再設定
         try:
             activity = discord.Activity(
-                type=discord.ActivityType.watching,
+                type=discord.ActivityType.competing,
                 name=self.config.get('discord_settings.status', 'みんなの会話')
             )
             await self.change_presence(
