@@ -195,10 +195,15 @@ class FunctionCallHandler:
             # スレッドIDの処理
             if thread_id == "current_thread":
                 # 現在のメッセージがスレッド内にある場合
+                self.logger.info(f"🔍 現在のチャンネルタイプ: {type(message.channel)}")
+                self.logger.info(f"🔍 現在のチャンネル詳細: {message.channel}")
+                
                 if isinstance(message.channel, discord.Thread):
                     thread = message.channel
-                    self.logger.info(f"✅ 現在のスレッドを使用: {thread.name}")
+                    self.logger.info(f"✅ 現在のスレッドを使用: {thread}")
+                    self.logger.info(f"🔍 スレッドオブジェクト詳細: {type(thread)}")
                 else:
+                    self.logger.warning(f"⚠️ 現在のチャンネルはスレッドではありません: {type(message.channel)}")
                     return {
                         "success": False,
                         "error": "現在のメッセージはスレッド内ではありません"
@@ -220,12 +225,33 @@ class FunctionCallHandler:
                         "error": "無効なスレッドIDです"
                     }
             
-            self.logger.info(f"✅ スレッド取得成功: {thread.name}")
+            # スレッドオブジェクトの詳細ログ
+            self.logger.info(f"🔍 スレッドオブジェクト詳細: {type(thread)}")
+            self.logger.info(f"🔍 スレッド属性: {dir(thread)}")
+            
+            # スレッド名の取得とログ
+            try:
+                current_name = thread.name
+                self.logger.info(f"✅ スレッド取得成功: {current_name}")
+            except Exception as name_error:
+                self.logger.error(f"❌ スレッド名取得エラー: {str(name_error)}")
+                self.logger.error(f"❌ スレッドオブジェクト: {thread}")
+                return {
+                    "success": False,
+                    "error": f"スレッド名の取得に失敗: {str(name_error)}"
+                }
             
             # スレッド名の変更
-            self.logger.info(f"🔄 スレッド名を変更中: {thread.name} → {new_name}")
-            await thread.edit(name=new_name)
-            self.logger.info(f"✅ スレッド名変更完了")
+            self.logger.info(f"🔄 スレッド名を変更中: {current_name} → {new_name}")
+            try:
+                await thread.edit(name=new_name)
+                self.logger.info(f"✅ スレッド名変更完了")
+            except Exception as edit_error:
+                self.logger.error(f"❌ スレッド名変更エラー: {str(edit_error)}")
+                return {
+                    "success": False,
+                    "error": f"スレッド名変更に失敗: {str(edit_error)}"
+                }
             
             return {
                 "success": True,
@@ -264,10 +290,15 @@ class FunctionCallHandler:
             # チャンネルIDの処理
             if channel_id == "current_channel":
                 # 現在のメッセージのチャンネルを使用
+                self.logger.info(f"🔍 現在のチャンネルタイプ: {type(message.channel)}")
+                self.logger.info(f"🔍 現在のチャンネル詳細: {message.channel}")
+                
                 if isinstance(message.channel, discord.TextChannel):
                     channel = message.channel
-                    self.logger.info(f"✅ 現在のチャンネルを使用: {channel.name}")
+                    self.logger.info(f"✅ 現在のチャンネルを使用: {channel}")
+                    self.logger.info(f"🔍 チャンネルオブジェクト詳細: {type(channel)}")
                 else:
+                    self.logger.warning(f"⚠️ 現在のチャンネルはテキストチャンネルではありません: {type(message.channel)}")
                     return {
                         "success": False,
                         "error": "現在のメッセージはテキストチャンネルではありません"
@@ -289,12 +320,33 @@ class FunctionCallHandler:
                         "error": "無効なチャンネルIDです"
                     }
             
-            self.logger.info(f"✅ チャンネル取得成功: {channel.name}")
+            # チャンネルオブジェクトの詳細ログ
+            self.logger.info(f"🔍 チャンネルオブジェクト詳細: {type(channel)}")
+            self.logger.info(f"🔍 チャンネル属性: {dir(channel)}")
+            
+            # チャンネル名の取得とログ
+            try:
+                current_name = channel.name
+                self.logger.info(f"✅ チャンネル取得成功: {current_name}")
+            except Exception as name_error:
+                self.logger.error(f"❌ チャンネル名取得エラー: {str(name_error)}")
+                self.logger.error(f"❌ チャンネルオブジェクト: {channel}")
+                return {
+                    "success": False,
+                    "error": f"チャンネル名の取得に失敗: {str(name_error)}"
+                }
             
             # チャンネル名の変更
-            self.logger.info(f"🔄 チャンネル名を変更中: {channel.name} → {new_name}")
-            await channel.edit(name=new_name)
-            self.logger.info(f"✅ チャンネル名変更完了")
+            self.logger.info(f"🔄 チャンネル名を変更中: {current_name} → {new_name}")
+            try:
+                await channel.edit(name=new_name)
+                self.logger.info(f"✅ チャンネル名変更完了")
+            except Exception as edit_error:
+                self.logger.error(f"❌ チャンネル名変更エラー: {str(edit_error)}")
+                return {
+                    "success": False,
+                    "error": f"チャンネル名変更に失敗: {str(edit_error)}"
+                }
             
             return {
                 "success": True,
