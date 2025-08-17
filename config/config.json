@@ -2,62 +2,38 @@
   "discord_settings": {
     "status": "みんなの会話",
     "admin_commands_enabled": true,
-    "enable_auto_status_update": true,
     "command_prefix": "!ai",
-    "enable_slash_commands": false,
-    "status_check_command": "!status",
-    "enable_help_command": true
+    "status_check_command": "!status"
   },
   "bot_settings": {
     "continuous_conversation_enabled": true,
-    "max_conversation_turns": 100,
     "max_concurrent_messages": 20,
     "message_timeout_seconds": 600,
     "enable_task_cleanup": true,
-    "enable_error_recovery": true,
-    "max_error_retries": 3,
-    "cleanup_interval_seconds": 180,
-    "enable_performance_metrics": true
+    "cleanup_interval_seconds": 180
   },
   "character_settings": {
-    "default_character": "friendly",
-    "character_switching_enabled": false,
-    "enable_character_rotation": false,
-    "character_rotation_interval": 3600
+    "default_character": "friendly"
   },
   "general_settings": {
     "chat_history_limit": 500,
-    "max_response_length": 4000,
+    "max_response_length": 16000,
     "enable_streaming": true,
-    "enable_typing_indicator": true,
-    "typing_duration": 5,
-    "streaming_update_interval": 50,
-    "enable_message_editing": true
+    "enable_typing_indicator": true
   },
   "openai_settings": {
     "model": "gpt-5",
-    "max_completion_tokens": 4000,
-    "max_context_tokens": 128000,
+    "max_completion_tokens": 16000,
     "temperature": 1.0,
     "timeout_seconds": 90,
     "retry_attempts": 5,
-    "enable_fallback_model": true,
-    "health_check_interval": 180,
-    "enable_rate_limit_monitoring": true
+    "health_check_interval": 180
   },
   "logging_settings": {
     "log_level": "DEBUG",
     "enable_detailed_logging": true,
-    "enable_performance_monitoring": true,
-    "enable_memory_monitoring": true,
     "log_to_file": true,
     "log_directory": "logs",
-    "log_to_console": true,
-    "enable_color_logging": true,
-    "log_rotation": true,
-    "log_retention_days": 30,
-    "max_log_size_mb": 100,
-    "enable_compression": true,
     "log_messages": {
       "bot_status_online": "BOTステータスをオンラインに設定しました",
       "bot_status_offline": "BOTステータスをオフラインに設定しました",
