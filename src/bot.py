@@ -918,7 +918,19 @@ class CharacterBot:
             return response_message, result_message
             
         except Exception as e:
+            # 詳細なエラー情報をログに出力
             self.logger.error(f"ツールコール処理エラー: {e}")
+            self.logger.error(f"エラータイプ: {type(e).__name__}")
+            self.logger.error(f"エラー詳細: {str(e)}")
+            
+            # エラーのトレースバック情報も出力
+            import traceback
+            self.logger.error(f"トレースバック: {traceback.format_exc()}")
+            
+            # エラーの属性情報も出力（利用可能な場合）
+            if hasattr(e, '__dict__'):
+                self.logger.error(f"エラー属性: {e.__dict__}")
+            
             error_message = f"ツールコールの処理中にエラーが発生しました: {str(e)}"
             response_message = await message.reply(error_message)
             return response_message, error_message
