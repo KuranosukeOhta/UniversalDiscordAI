@@ -46,7 +46,8 @@ class OpenAIHandler:
         character_data: Dict,
         model: str = "gpt-5",
         max_completion_tokens: int = 2000,
-        temperature: float = 1.0  # GPT-5はtemperature=1のみサポート
+        temperature: float = 1.0,  # GPT-5はtemperature=1のみサポート
+        function_definitions: List[Dict] = None
     ) -> AsyncGenerator[str, None]:
         """ストリーミングレスポンスを生成"""
         
@@ -85,6 +86,11 @@ class OpenAIHandler:
             "max_completion_tokens": max_completion_tokens,  # GPT-5では max_completion_tokens を使用
             "stream": True
         }
+        
+        # ファンクションコールが有効な場合、関数定義を追加
+        if function_definitions:
+            request_data["tools"] = function_definitions
+            request_data["tool_choice"] = "auto"
         
         # GPT-5では temperature=1 がデフォルトなので、1以外の場合のみ指定
         if temperature != 1.0:
@@ -233,6 +239,83 @@ class OpenAIHandler:
         ])
         
         return "\n".join(prompt_parts)
+    
+    async def generate_response_with_function_calls(
+        self, 
+        context: str, 
+        character_data: Dict,
+        function_definitions: List[Dict],
+        model: str = "gpt-5",
+        max_completion_tokens: int = 2000,
+        temperature: float = 1.0
+    ) -> Dict:
+        """ファンクションコール対応のレスポンスを生成"""
+        
+        if not self.api_key:
+            return {
+                "success": False,
+                "error": "OpenAI APIキーが設定されていません"
+            }
+        
+        # システムプロンプトを構築
+        system_prompt = self._build_system_prompt(character_data)
+        
+        # ファンクションコール用のシステムプロンプトを追加
+        system_prompt += "\n\n【ファンクションコール機能】"
+        system_prompt += "\n必要に応じて、以下の関数を使用してDiscordの操作を実行できます。"
+        system_prompt += "\n関数を使用する場合は、適切な引数を指定してください。"
+        
+        # リクエストデータを構築
+        request_data = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": context}
+            ],
+            "max_completion_tokens": max_completion_tokens,
+            "tools": function_definitions,
+            "tool_choice": "auto"
+        }
+        
+        # GPT-5では temperature=1 がデフォルトなので、1以外の場合のみ指定
+        if temperature != 1.0:
+            request_data["temperature"] = temperature
+        
+        try:
+            # レート制限チェック
+            await self.rate_limiter.acquire()
+            
+            async with aiohttp.ClientSession(timeout=self.timeout) as session:
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                }
+                
+                async with session.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=request_data
+                ) as response:
+                    
+                    if response.status == 200:
+                        response_data = await response.json()
+                        return {
+                            "success": True,
+                            "response": response_data,
+                            "choices": response_data.get("choices", [])
+                        }
+                    else:
+                        error_text = await response.text()
+                        return {
+                            "success": False,
+                            "error": f"OpenAI API エラー - HTTP {response.status}: {error_text}"
+                        }
+                        
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"リクエスト実行中にエラー: {str(e)}"
+            }
         
     async def _handle_rate_limit(self, response):
         """レート制限への対応"""

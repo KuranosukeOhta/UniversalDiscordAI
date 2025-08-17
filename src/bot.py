@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 
 from character_manager import CharacterManager
 from openai_handler import OpenAIHandler
+from function_call_handler import FunctionCallHandler
 from utils import ConfigManager, setup_logging, TokenCounter, DetailedLogger
 
 # 環境変数を読み込み
@@ -54,6 +55,7 @@ class UniversalDiscordAI(commands.Bot):
         self.config = ConfigManager()
         self.character_manager = CharacterManager()
         self.openai_handler = OpenAIHandler()
+        self.function_call_handler = FunctionCallHandler(self, self.config.config)
         self.token_counter = TokenCounter()
         
         # BOTインスタンスの管理
@@ -531,6 +533,10 @@ class UniversalDiscordAI(commands.Bot):
         # ステータス確認コマンド
         if content == status_command:
             await self.handle_status_command(message)
+        
+        # ファンクションコール機能確認コマンド
+        if content == f"{command_prefix} functions":
+            await self.handle_functions_command(message)
     
     async def handle_status_command(self, message: discord.Message):
         """ステータス確認コマンドの処理（非同期処理情報追加）"""
@@ -590,6 +596,42 @@ class UniversalDiscordAI(commands.Bot):
             self.logger.error(f"ステータスコマンド処理エラー: {e}")
             await message.reply("申し訳ございません。ステータス情報の取得に失敗しました。")
     
+    async def handle_functions_command(self, message: discord.Message):
+        """ファンクションコール機能確認コマンドの処理"""
+        try:
+            if not self.function_call_handler.enabled:
+                await message.reply("❌ ファンクションコール機能は無効化されています")
+                return
+            
+            # 利用可能な関数の一覧を取得
+            functions = self.function_call_handler.get_function_definitions()
+            
+            if not functions:
+                await message.reply("❌ 利用可能な関数がありません")
+                return
+            
+            # 関数一覧を構築
+            functions_info = "🔧 **利用可能なファンクションコール機能**\n\n"
+            for func in functions:
+                functions_info += f"**{func['name']}**\n"
+                functions_info += f"説明: {func['description']}\n"
+                if 'parameters' in func and 'properties' in func['parameters']:
+                    required = func['parameters'].get('required', [])
+                    properties = func['parameters']['properties']
+                    functions_info += "パラメータ:\n"
+                    for prop_name, prop_info in properties.items():
+                        required_mark = " (必須)" if prop_name in required else ""
+                        functions_info += f"• {prop_name}{required_mark}: {prop_info.get('description', '説明なし')}\n"
+                functions_info += "\n"
+            
+            functions_info += f"⚠️ **注意**: 管理者権限が必要です"
+            
+            await message.reply(functions_info)
+            
+        except Exception as e:
+            self.logger.error(f"ファンクションコール機能確認コマンド処理エラー: {e}")
+            await message.reply("申し訳ございません。ファンクションコール機能の確認に失敗しました。")
+    
     async def is_previous_message_from_bot(self, message: discord.Message) -> bool:
         """前のメッセージがBOTかどうかを判定"""
         try:
@@ -638,38 +680,18 @@ class CharacterBot:
                 await message.reply("申し訳ございません。コンテキストが長すぎるため、履歴を短縮して再試行してください。")
                 return
                 
-            # OpenAI APIで返答生成（ストリーミング）
-            response_message = None
-            full_response = ""
-            is_first_chunk = True
+            # ファンクションコールが有効かチェック
+            function_definitions = self.parent_bot.function_call_handler.get_function_definitions()
+            use_function_calls = len(function_definitions) > 0 and self.parent_bot.function_call_handler.enabled
             
-            async for chunk in self.parent_bot.openai_handler.generate_streaming_response(
-                context=context,
-                character_data=self.character_data
-            ):
-                full_response += chunk
-                
-                # 最初のチャンクの場合、メッセージを送信
-                if is_first_chunk:
-                    try:
-                        response_message = await message.reply(full_response[:2000])
-                        is_first_chunk = False
-                        self.logger.debug(f"初回メッセージ送信完了: {len(full_response)}文字")
-                    except Exception as e:
-                        self.logger.error(f"初回メッセージ送信エラー: {e}")
-                        # 初回送信に失敗した場合は、次のチャンクで再試行
-                        continue
-                
-                # 2番目以降のチャンクの場合、メッセージを編集更新
-                elif response_message and len(full_response) % 100 == 0:  # 100文字ごとに更新
-                    try:
-                        await response_message.edit(content=full_response[:2000])  # Discord制限
-                    except discord.NotFound:
-                        # メッセージが削除された場合
-                        break
-                    except discord.HTTPException:
-                        # 編集制限に達した場合
-                        pass
+            if use_function_calls:
+                # ファンクションコール対応のレスポンス生成
+                response_message, full_response = await self._generate_response_with_function_calls(
+                    message, context, channel_info, chat_history, reply_context
+                )
+            else:
+                # 従来のストリーミングレスポンス生成
+                response_message, full_response = await self._generate_streaming_response(message, context)
                         
             # 最終的な返答を設定（初回送信が失敗していた場合のフォールバック）
             if not response_message and full_response:
@@ -765,6 +787,145 @@ class CharacterBot:
             context_parts.append(f"\n上記のメッセージに対して、設定された人格で返答してください。")
         
         return "\n".join(context_parts)
+    
+    async def _generate_response_with_function_calls(
+        self, 
+        message: discord.Message, 
+        context: str, 
+        channel_info: Dict, 
+        chat_history: List[Dict], 
+        reply_context: Dict
+    ) -> tuple[discord.Message, str]:
+        """ファンクションコール対応のレスポンス生成"""
+        try:
+            # ファンクション定義を取得
+            function_definitions = self.parent_bot.function_call_handler.get_function_definitions()
+            
+            # OpenAI APIでファンクションコール対応のレスポンス生成
+            response_data = await self.parent_bot.openai_handler.generate_response_with_function_calls(
+                context=context,
+                character_data=self.character_data,
+                function_definitions=function_definitions
+            )
+            
+            if not response_data["success"]:
+                # エラーの場合は通常のストリーミングレスポンスにフォールバック
+                self.logger.warning(f"ファンクションコールレスポンス生成失敗: {response_data['error']}")
+                return await self._generate_streaming_response(message, context)
+            
+            # レスポンスからツールコールをチェック
+            choices = response_data.get("choices", [])
+            if not choices:
+                return await self._generate_streaming_response(message, context)
+            
+            choice = choices[0]
+            message_content = choice.get("message", {})
+            tool_calls = message_content.get("tool_calls", [])
+            
+            if tool_calls:
+                # ツールコールがある場合の処理
+                return await self._handle_tool_calls(message, tool_calls, message_content, context)
+            else:
+                # 通常のテキストレスポンス
+                content = message_content.get("content", "")
+                if content:
+                    response_message = await message.reply(content)
+                    return response_message, content
+                else:
+                    return await self._generate_streaming_response(message, context)
+                    
+        except Exception as e:
+            self.logger.error(f"ファンクションコールレスポンス生成エラー: {e}")
+            # エラーの場合は通常のストリーミングレスポンスにフォールバック
+            return await self._generate_streaming_response(message, context)
+    
+    async def _handle_tool_calls(
+        self, 
+        message: discord.Message, 
+        tool_calls: List[Dict], 
+        message_content: Dict, 
+        context: str
+    ) -> tuple[discord.Message, str]:
+        """ツールコールを処理"""
+        try:
+            # 最初のツールコールを処理
+            tool_call = tool_calls[0]
+            function_name = tool_call.get("function", {}).get("name")
+            arguments = tool_call.get("function", {}).get("arguments", "{}")
+            
+            # 引数をパース
+            import json
+            try:
+                parsed_args = json.loads(arguments)
+            except json.JSONDecodeError:
+                parsed_args = {}
+            
+            # ファンクションコールを実行
+            result = await self.parent_bot.function_call_handler.execute_function_call(
+                function_name, parsed_args, message
+            )
+            
+            # 結果をフォーマット
+            result_message = self.parent_bot.function_call_handler.format_function_result_for_ai(result)
+            
+            # 結果を送信
+            response_message = await message.reply(result_message)
+            
+            return response_message, result_message
+            
+        except Exception as e:
+            self.logger.error(f"ツールコール処理エラー: {e}")
+            error_message = f"ツールコールの処理中にエラーが発生しました: {str(e)}"
+            response_message = await message.reply(error_message)
+            return response_message, error_message
+    
+    async def _generate_streaming_response(self, message: discord.Message, context: str) -> tuple[discord.Message, str]:
+        """従来のストリーミングレスポンス生成"""
+        response_message = None
+        full_response = ""
+        is_first_chunk = True
+        
+        async for chunk in self.parent_bot.openai_handler.generate_streaming_response(
+            context=context,
+            character_data=self.character_data
+        ):
+            full_response += chunk
+            
+            # 最初のチャンクの場合、メッセージを送信
+            if is_first_chunk:
+                try:
+                    response_message = await message.reply(full_response[:2000])
+                    is_first_chunk = False
+                    self.logger.debug(f"初回メッセージ送信完了: {len(full_response)}文字")
+                except Exception as e:
+                    self.logger.error(f"初回メッセージ送信エラー: {e}")
+                    # 初回送信に失敗した場合は、次のチャンクで再試行
+                    continue
+            
+            # 2番目以降のチャンクの場合、メッセージを編集更新
+            elif response_message and len(full_response) % 100 == 0:  # 100文字ごとに更新
+                try:
+                    await response_message.edit(content=full_response[:2000])  # Discord制限
+                except discord.NotFound:
+                    # メッセージが削除された場合
+                    break
+                except discord.HTTPException:
+                    # 編集制限に達した場合
+                    pass
+        
+        # 最終的な返答を設定（初回送信が失敗していた場合のフォールバック）
+        if not response_message and full_response:
+            try:
+                response_message = await message.reply(full_response[:2000])
+            except Exception as e:
+                self.logger.error(f"フォールバックメッセージ送信エラー: {e}")
+        elif response_message and full_response:
+            try:
+                await response_message.edit(content=full_response[:2000])
+            except discord.NotFound:
+                pass
+        
+        return response_message, full_response
 
 
 async def main():

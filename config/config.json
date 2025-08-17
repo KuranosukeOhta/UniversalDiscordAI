@@ -29,6 +29,12 @@
     "retry_attempts": 5,
     "health_check_interval": 180
   },
+  "function_call_settings": {
+    "enabled": true,
+    "allowed_operations": ["edit_thread", "edit_channel"],
+    "require_admin": true,
+    "log_all_operations": false
+  },
   "logging_settings": {
     "log_level": "DEBUG",
     "enable_detailed_logging": true,
