@@ -26,3 +26,10 @@ aiohttp==3.9.1
 
 # Markdown parsing for character files
 markdown==3.5.2
+
+# Image processing libraries
+Pillow==10.1.0
+opencv-python==4.8.1.78
+
+# Additional utilities for image handling
+requests==2.31.0
