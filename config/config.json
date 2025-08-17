@@ -5,7 +5,9 @@
     "rate_limit_adjustment": true,
     "typing_indicator_enabled": true,
     "max_response_length": 2000,
-    "stream_update_interval": 0.5
+    "stream_update_interval": 0.5,
+    "delayed_message_sending": true,
+    "typing_duration": 10
   },
   "openai_settings": {
     "model": "gpt-5",
@@ -28,6 +30,11 @@
     "level": "INFO",
     "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     "file_enabled": true,
-    "file_path": "logs/discord_ai.log"
+    "file_path": "logs/discord_ai.log",
+    "detailed_logging": true,
+    "server_activity_logging": true,
+    "error_detail_logging": true,
+    "response_time_logging": true,
+    "channel_activity_logging": true
   }
 }
