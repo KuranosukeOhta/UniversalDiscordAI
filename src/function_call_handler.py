@@ -37,50 +37,50 @@ class FunctionCallHandler:
         functions = []
         
         if "edit_thread" in self.allowed_operations:
-                               functions.append({
-                       "type": "function",
-                       "function": {
-                           "name": "edit_thread_name",
-                           "description": "Discordスレッドの名前を変更します",
-                           "parameters": {
-                               "type": "object",
-                               "properties": {
-                                   "thread_id": {
-                                       "type": "string",
-                                       "description": "変更したいスレッドのID。'current_thread'または'current_thread_id'で現在のスレッドを指定できます。"
-                                   },
-                                   "new_name": {
-                                       "type": "string",
-                                       "description": "新しいスレッド名"
-                                   }
-                               },
-                               "required": ["thread_id", "new_name"]
-                           }
-                       }
-                   })
+            functions.append({
+                "type": "function",
+                "function": {
+                    "name": "edit_thread_name",
+                    "description": "Discordスレッドの名前を変更します",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "thread_id": {
+                                "type": "string",
+                                "description": "変更したいスレッドのID。'current_thread'または'current_thread_id'で現在のスレッドを指定できます。"
+                            },
+                            "new_name": {
+                                "type": "string",
+                                "description": "新しいスレッド名"
+                            }
+                        },
+                        "required": ["thread_id", "new_name"]
+                    }
+                }
+            })
             
         if "edit_channel" in self.allowed_operations:
-                               functions.append({
-                       "type": "function",
-                       "function": {
-                           "name": "edit_channel_name",
-                           "description": "Discordチャンネルの名前を変更します",
-                           "parameters": {
-                               "type": "object",
-                               "properties": {
-                                   "channel_id": {
-                                       "type": "string",
-                                       "description": "変更したいチャンネルのID。'current_channel'または'current_channel_id'で現在のチャンネルを指定できます。"
-                                   },
-                                   "new_name": {
-                                       "type": "string",
-                                       "description": "新しいチャンネル名"
-                                   }
-                               },
-                               "required": ["channel_id", "new_name"]
-                           }
-                       }
-                   })
+            functions.append({
+                "type": "function",
+                "function": {
+                    "name": "edit_channel_name",
+                    "description": "Discordチャンネルの名前を変更します",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "channel_id": {
+                                "type": "string",
+                                "description": "変更したいチャンネルのID。'current_channel'または'current_channel_id'で現在のチャンネルを指定できます。"
+                            },
+                            "new_name": {
+                                "type": "string",
+                                "description": "新しいチャンネル名"
+                            }
+                        },
+                        "required": ["channel_id", "new_name"]
+                    }
+                }
+            })
             
         return functions
     
