@@ -1052,7 +1052,7 @@ class CharacterBot:
                         context=context,
                         character_data=self.character_data,
                         function_definitions=function_definitions,
-                        max_completion_tokens=16000,
+                        max_tokens=16000,  # max_completion_tokensからmax_tokensに変更
                         image_attachments=image_attachments
                     )
                 )

@@ -86,7 +86,7 @@ docker-compose down
   },
   "openai_settings": {
     "model": "gpt-5",                   // 使用するモデル
-    "max_completion_tokens": 16000,     // 最大トークン数
+    "max_tokens": 16000,                // 最大トークン数（max_completion_tokensからmax_tokensに変更）
     "temperature": 1.0                  // 創造性レベル
   }
 }

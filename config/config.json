@@ -24,7 +24,7 @@
   },
   "openai_settings": {
     "model": "gpt-5",
-    "max_completion_tokens": 16000,
+    "max_tokens": 16000,
     "temperature": 1.0,
     "timeout_seconds": 30,
     "retry_attempts": 2,
