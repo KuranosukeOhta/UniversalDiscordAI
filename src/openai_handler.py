@@ -45,7 +45,7 @@ class OpenAIHandler:
         context: str, 
         character_data: Dict,
         model: str = "gpt-5",
-        max_tokens: int = 16000,  # max_completion_tokensからmax_tokensに変更
+        max_completion_tokens: int = 2000,  # GPT-5ではmax_completion_tokensを使用
         temperature: float = 1.0,  # GPT-5はtemperature=1のみサポート
         function_definitions: List[Dict] = None,
         image_attachments: List[Dict] = None
@@ -70,7 +70,7 @@ class OpenAIHandler:
             "messages": [
                 {"role": "system", "content": system_prompt}
             ],
-            "max_tokens": max_tokens,  # GPT-5では max_tokens を使用
+            "max_completion_tokens": max_completion_tokens,  # GPT-5ではmax_completion_tokensを使用
             "stream": True
         }
         
@@ -124,7 +124,7 @@ class OpenAIHandler:
         # リクエストデータの詳細をログ出力
         self.logger.info(f"🚀 OpenAI APIリクエスト構造:")
         self.logger.info(f"  - モデル: {model}")
-        self.logger.info(f"  - 最大トークン数: {max_tokens}")
+        self.logger.info(f"  - 最大トークン数: {max_completion_tokens}")
         self.logger.info(f"  - ストリーミング: {request_data.get('stream', False)}")
         self.logger.info(f"  - メッセージ数: {len(request_data['messages'])}")
         if image_attachments:
@@ -290,7 +290,7 @@ class OpenAIHandler:
         character_data: Dict,
         function_definitions: List[Dict],
         model: str = "gpt-5",
-        max_tokens: int = 16000,  # max_completion_tokensからmax_tokensに変更
+        max_completion_tokens: int = 2000,  # GPT-5ではmax_completion_tokensを使用
         temperature: float = 1.0,
         image_attachments: List[Dict] = None
     ) -> Dict:
@@ -316,7 +316,7 @@ class OpenAIHandler:
             "messages": [
                 {"role": "system", "content": system_prompt}
             ],
-            "max_tokens": max_tokens,  # max_completion_tokensからmax_tokensに変更
+            "max_completion_tokens": max_completion_tokens,  # GPT-5ではmax_completion_tokensを使用
             "tools": function_definitions,
             "tool_choice": "auto"
         }
@@ -366,7 +366,7 @@ class OpenAIHandler:
         # ファンクションコール用リクエストデータの詳細をログ出力
         self.logger.info(f"🚀 ファンクションコール用OpenAI APIリクエスト構造:")
         self.logger.info(f"  - モデル: {model}")
-        self.logger.info(f"  - 最大トークン数: {max_tokens}")
+        self.logger.info(f"  - 最大トークン数: {max_completion_tokens}")
         self.logger.info(f"  - ストリーミング: {request_data.get('stream', False)}")
         self.logger.info(f"  - メッセージ数: {len(request_data['messages'])}")
         self.logger.info(f"  - 関数定義: {len(function_definitions)}個")
@@ -461,7 +461,7 @@ class OpenAIHandler:
                 test_data = {
                     "model": "gpt-5",
                     "messages": [{"role": "user", "content": "Hi"}],
-                    "max_tokens": 10  # max_completion_tokensではなくmax_tokensを使用
+                    "max_completion_tokens": 10  # GPT-5ではmax_completion_tokensを使用
                 }
                 
                 self.logger.debug(f"軽量テストリクエスト送信中: {self.base_url}/chat/completions")
@@ -509,7 +509,7 @@ class OpenAIHandler:
                 test_data = {
                     "model": "gpt-5",
                     "messages": [{"role": "user", "content": "Hello"}],
-                    "max_tokens": 10  # max_completion_tokensではなくmax_tokensを使用
+                    "max_completion_tokens": 10  # GPT-5ではmax_completion_tokensを使用
                 }
                 
                 self.logger.debug(f"テストリクエスト送信中: {self.base_url}/chat/completions")
