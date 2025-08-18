@@ -520,17 +520,6 @@ class UniversalDiscordAI(commands.Bot):
             # キュー処理タスクを開始（まだ開始されていない場合）
             await self._start_queue_processor(channel_id)
             
-            # 既に処理中のメッセージがある場合のみ通知
-            has_processing = any(
-                task.channel_id == channel_id and task.status == "processing"
-                for task in self.active_message_tasks.values()
-            )
-            if has_processing or queue.qsize() > 1:
-                try:
-                    await message.reply("メッセージを順番に処理します。しばらくお待ちください。")
-                except:
-                    pass
-            
             return
             
         except Exception as e:
