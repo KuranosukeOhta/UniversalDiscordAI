@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 from character_manager import CharacterManager
 from openai_handler import OpenAIHandler
 from function_call_handler import FunctionCallHandler
-from utils import ConfigManager, setup_logging, TokenCounter, DetailedLogger
+from utils import ConfigManager, setup_logging, TokenCounter, DetailedLogger, UsageAggregator
 
 # 環境変数を読み込み
 load_dotenv('env.local')
@@ -84,6 +84,7 @@ class UniversalDiscordAI(commands.Bot):
         # ログ設定
         self.logger = setup_logging()
         self.detailed_logger = DetailedLogger(self.config)
+        self.usage_aggregator = UsageAggregator()
         
         # 統計情報
         self.stats = {
@@ -1114,11 +1115,29 @@ class CharacterBot:
             
             # 成功時の詳細ログ
             response_time = asyncio.get_event_loop().time() - start_time
+            # トークン数の推定（簡易版）
+            estimated_output_tokens = len(full_response.split()) if full_response else 0
+            estimated_input_tokens = len(context.split()) if context else 0
+            
+            # 集計: ユーザーごとの使用量を擬似DB(JSON)に加算
+            try:
+                cost_data = self.parent_bot.detailed_logger.cost_calculator.calculate_cost(
+                    estimated_input_tokens, estimated_output_tokens
+                )
+                total_cost_usd = float(cost_data.get('total_cost_usd', 0.0)) if cost_data else 0.0
+                total_cost_jpy = float(cost_data.get('total_cost_jpy', 0.0)) if cost_data else 0.0
+                self.parent_bot.usage_aggregator.add_usage(
+                    user_id=str(message.author.id),
+                    user_name=message.author.display_name,
+                    input_tokens=estimated_input_tokens,
+                    output_tokens=estimated_output_tokens,
+                    total_cost_usd=total_cost_usd,
+                    total_cost_jpy=total_cost_jpy,
+                )
+            except Exception as agg_err:
+                self.logger.error(f"使用量集計エラー: {agg_err}")
+
             if message.guild:
-                # トークン数の推定（簡易版）
-                estimated_output_tokens = len(full_response.split())
-                estimated_input_tokens = len(context.split())  # コンテキストのトークン数推定
-                
                 # メッセージ送信の成功/失敗を正確に判定
                 message_sent_success = (
                     response_message is not None and 

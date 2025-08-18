@@ -555,3 +555,89 @@ class DetailedLogger:
         if self.detailed_logging:
             self.logger.info(f"🎭 キャラクター選択 [{server_name}/#{channel_name}] "
                            f"選択: {selected_character} | 利用可能: {', '.join(available_characters)}")
+
+
+class UsageAggregator:
+    """ユーザーごとのトークン/コスト集計をJSONに保存する擬似DB管理クラス"""
+
+    def __init__(self, db_path: str = "logs/usage_db.json"):
+        self.db_path = db_path
+        self.logger = logging.getLogger(__name__)
+
+    def _ensure_parent_dir(self):
+        try:
+            parent_dir = os.path.dirname(self.db_path)
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
+        except Exception as e:
+            self.logger.error(f"使用量DBディレクトリ作成エラー: {e}")
+
+    def _load_db(self) -> Dict[str, Dict[str, Any]]:
+        try:
+            if os.path.exists(self.db_path):
+                with open(self.db_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        return data
+                    # 期待形式でない場合は初期化
+                    self.logger.warning("usage_db.json の形式が不正のため再初期化します")
+            return {}
+        except Exception as e:
+            self.logger.error(f"使用量DB読み込みエラー: {e}")
+            return {}
+
+    def _save_db(self, data: Dict[str, Dict[str, Any]]):
+        try:
+            self._ensure_parent_dir()
+            with open(self.db_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            self.logger.error(f"使用量DB保存エラー: {e}")
+
+    def add_usage(
+        self,
+        user_id: str,
+        user_name: str,
+        input_tokens: int,
+        output_tokens: int,
+        total_cost_usd: float,
+        total_cost_jpy: float,
+    ) -> None:
+        """ユーザーごとの累積値を加算して保存する"""
+        try:
+            db = self._load_db()
+
+            if user_id not in db:
+                db[user_id] = {
+                    "user_id": user_id,
+                    "user_name": user_name,
+                    "generations": 0,
+                    "total_input_tokens": 0,
+                    "total_output_tokens": 0,
+                    "total_tokens": 0,
+                    "total_cost_usd": 0.0,
+                    "total_cost_jpy": 0.0,
+                    "last_updated": "",
+                }
+
+            record = db[user_id]
+
+            record["user_name"] = user_name  # 最新名で更新
+            record["generations"] += 1
+            record["total_input_tokens"] += int(max(0, input_tokens))
+            record["total_output_tokens"] += int(max(0, output_tokens))
+            record["total_tokens"] = record["total_input_tokens"] + record["total_output_tokens"]
+            record["total_cost_usd"] = float(record["total_cost_usd"]) + float(max(0.0, total_cost_usd))
+            record["total_cost_jpy"] = float(record["total_cost_jpy"]) + float(max(0.0, total_cost_jpy))
+
+            # ISO8601で更新時刻
+            try:
+                from datetime import datetime, timezone
+                record["last_updated"] = datetime.now(timezone.utc).isoformat()
+            except Exception:
+                pass
+
+            db[user_id] = record
+            self._save_db(db)
+        except Exception as e:
+            self.logger.error(f"使用量集計の更新エラー: {e}")
