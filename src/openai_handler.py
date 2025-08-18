@@ -733,6 +733,9 @@ class OpenAIHandler:
         
         self.logger.info(f"🔍 画像添付ファイル処理開始: {len(message_attachments)}個の添付ファイル")
         
+        # 画像データの収集用リスト
+        image_data = []
+        
         # 並列処理で画像を処理
         async def process_single_image(attachment):
             self.logger.debug(f"添付ファイル処理中: {attachment.filename}")
