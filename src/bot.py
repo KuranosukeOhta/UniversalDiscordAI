@@ -687,6 +687,35 @@ class UniversalDiscordAI(commands.Bot):
                         self.logger.warning("⚠️ 画像ファイルとして認識されませんでした")
                 else:
                     self.logger.info("📝 画像添付なし")
+
+                # リプライ先メッセージの画像添付も処理
+                if message.reference and getattr(message.reference, 'message_id', None):
+                    try:
+                        referenced_message = await message.channel.fetch_message(message.reference.message_id)
+                        if referenced_message:
+                            # 返信先がBOTの場合は既存方針に合わせてスキップ
+                            if referenced_message.author and referenced_message.author.bot:
+                                self.logger.debug(f"返信先メッセージはBOTのため画像取得をスキップ: {referenced_message.author}")
+                            else:
+                                if referenced_message.attachments:
+                                    self.logger.info(f"🖼️ リプライ先の添付ファイル検出: {len(referenced_message.attachments)}個")
+                                    reply_images = await self.openai_handler.process_image_attachments(referenced_message.attachments)
+                                    if reply_images:
+                                        existing_urls = {img['url'] for img in image_attachments} if image_attachments else set()
+                                        new_images = [img for img in reply_images if img.get('url') not in existing_urls]
+                                        if new_images:
+                                            image_attachments.extend(new_images)
+                                            self.logger.info(f"✅ リプライ先から {len(new_images)} 個の画像を追加（合計: {len(image_attachments)}）")
+                                    else:
+                                        self.logger.info("📝 リプライ先に画像として認識できる添付はありませんでした")
+                                else:
+                                    self.logger.debug("リプライ先に添付ファイルはありません")
+                    except discord.NotFound:
+                        self.logger.warning(f"返信先メッセージが見つかりません（画像取得スキップ）: {message.reference.message_id}")
+                    except discord.Forbidden:
+                        self.logger.warning(f"返信先メッセージへのアクセス権限がありません（画像取得スキップ）: {message.reference.message_id}")
+                    except Exception as e:
+                        self.logger.error(f"返信先メッセージの画像取得中にエラー: {e}")
                 
                 # キャラクター選択の詳細ログ
                 if message.guild:
