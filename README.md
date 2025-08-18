@@ -87,7 +87,9 @@ docker-compose down
   "openai_settings": {
     "model": "gpt-5",                   // 使用するモデル
     "max_completion_tokens": 16000,     // 最大トークン数
-    "temperature": 1.0                  // 創造性レベル
+    "temperature": 1.0,                 // 創造性レベル
+    "timeout_seconds": 120,             // OpenAI APIタイムアウト（秒）
+    "function_call_timeout": 30         // ファンクションコールタイムアウト（秒）
   }
 }
 ```

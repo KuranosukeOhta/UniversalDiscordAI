@@ -25,8 +25,8 @@ class OpenAIHandler:
         self.current_rate_limit = 50
         
         # リクエスト設定
-        self.timeout = aiohttp.ClientTimeout(total=30)
-        self.max_retries = 3
+        self.timeout = aiohttp.ClientTimeout(total=self.config.get('openai_settings.timeout_seconds', 120))
+        self.max_retries = self.config.get('openai_settings.retry_attempts', 3)
         self.retry_delay = 1.0
         
         # 接続状態監視
@@ -179,11 +179,15 @@ class OpenAIHandler:
                         return  # 成功時は終了
                         
             except asyncio.TimeoutError:
-                self.logger.error("OpenAI API タイムアウト")
+                response_time = asyncio.get_event_loop().time() - start_time
+                self.logger.error(f"OpenAI API タイムアウト (設定: {self.timeout.total}秒, 実際: {response_time:.2f}秒)")
+                self.logger.error(f"タイムアウト詳細 - モデル: {model}, 最大トークン: {max_completion_tokens}, コンテキスト長: {len(context)}文字")
+                if image_attachments:
+                    self.logger.error(f"画像添付: {len(image_attachments)}個")
                 self._update_connection_status(success=False, error_type="timeout")
                 retry_count += 1
                 if retry_count >= self.max_retries:
-                    yield "エラー: OpenAI APIがタイムアウトしました"
+                    yield f"エラー: OpenAI APIがタイムアウトしました (設定: {self.timeout.total}秒)"
                     return
                 await asyncio.sleep(self.retry_delay * retry_count)
                 
@@ -377,6 +381,8 @@ class OpenAIHandler:
             # レート制限チェック
             await self.rate_limiter.acquire()
             
+            start_time = asyncio.get_event_loop().time()
+            
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
                 headers = {
                     "Authorization": f"Bearer {self.api_key}",
@@ -391,6 +397,8 @@ class OpenAIHandler:
                     
                     if response.status == 200:
                         response_data = await response.json()
+                        response_time = asyncio.get_event_loop().time() - start_time
+                        self.logger.info(f"✅ ファンクションコール成功 - レスポンス時間: {response_time:.2f}秒")
                         return {
                             "success": True,
                             "response": response_data,
@@ -398,14 +406,27 @@ class OpenAIHandler:
                         }
                     else:
                         error_text = await response.text()
+                        response_time = asyncio.get_event_loop().time() - start_time
+                        self.logger.error(f"❌ ファンクションコール失敗 - HTTP {response.status} (レスポンス時間: {response_time:.2f}秒)")
+                        self.logger.error(f"エラー詳細: {error_text}")
                         return {
                             "success": False,
                             "error": f"OpenAI API エラー - HTTP {response.status}: {error_text}"
                         }
                         
+        except asyncio.TimeoutError:
+            response_time = asyncio.get_event_loop().time() - start_time
+            self.logger.error(f"❌ ファンクションコールタイムアウト (設定: {self.timeout.total}秒, 実際: {response_time:.2f}秒)")
+            self.logger.error(f"タイムアウト詳細 - モデル: {model}, 最大トークン: {max_completion_tokens}, コンテキスト長: {len(context)}文字")
+            if image_attachments:
+                self.logger.error(f"画像添付: {len(image_attachments)}個")
+            return {
+                "success": False,
+                "error": f"ファンクションコールがタイムアウトしました (設定: {self.timeout.total}秒)"
+            }
         except Exception as e:
-            # エラーの詳細情報をログ出力
-            self.logger.error(f"❌ ファンクションコールリクエスト実行中にエラー: {type(e).__name__}: {str(e)}")
+            response_time = asyncio.get_event_loop().time() - start_time
+            self.logger.error(f"❌ ファンクションコールリクエスト実行中にエラー: {type(e).__name__}: {str(e)} (レスポンス時間: {response_time:.2f}秒)")
             self.logger.error(f"📋 エラー詳細: {e}")
             
             # エラーのトレースバック情報も含める

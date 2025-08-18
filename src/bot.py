@@ -1058,8 +1058,9 @@ class CharacterBot:
                 )
                 
                 # 短いタイムアウトでファンクションコールを待機
+                function_call_timeout = self.parent_bot.config.get('openai_settings.function_call_timeout', 30)
                 try:
-                    response_data = await asyncio.wait_for(function_call_task, timeout=10.0)
+                    response_data = await asyncio.wait_for(function_call_task, timeout=function_call_timeout)
                     if response_data["success"]:
                         # 成功した場合はファンクションコール処理を継続
                         pass
@@ -1071,7 +1072,7 @@ class CharacterBot:
                         
                 except asyncio.TimeoutError:
                     # タイムアウトした場合は即座にストリーミングに移行
-                    self.logger.info(f"⏰ ファンクションコール処理がタイムアウト（10秒）、ストリーミングに即座に移行")
+                    self.logger.info(f"⏰ ファンクションコール処理がタイムアウト（{function_call_timeout}秒）、ストリーミングに即座に移行")
                     return await self._generate_streaming_response_internal(message, context, image_attachments)
                 
                 # レスポンスからツールコールをチェック
