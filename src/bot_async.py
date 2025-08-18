@@ -257,9 +257,17 @@ class UniversalDiscordAI(commands.Bot):
                         self.logger.debug(f"ロールメンション検知: {role.name}")
                         break
         
+        # 現在のメッセージに他ユーザー/ロール/全体(@everyone/@here)へのメンションが含まれる場合、
+        # 自分がメンションされていない限りは自動発火（連続会話）を抑止する
+        has_other_mentions_in_current = (
+            (len(message.mentions) > 0) or
+            (len(message.role_mentions) > 0) or
+            getattr(message, "mention_everyone", False)
+        )
+
         # 前のメッセージがBOTかどうかをチェック（設定で有効化されている場合のみ）
         is_previous_bot = False
-        if self.config.get('bot_settings.continuous_conversation_enabled', True):
+        if self.config.get('bot_settings.continuous_conversation_enabled', True) and not has_other_mentions_in_current:
             is_previous_bot = await self.is_previous_message_from_bot(message)
             if is_previous_bot:
                 mention_type = "連続会話（前のメッセージがBOT）"

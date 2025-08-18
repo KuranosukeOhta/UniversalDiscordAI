@@ -419,8 +419,16 @@ class UniversalDiscordAI(commands.Bot):
                         self.logger.debug(f"ロールメンション検知: {role.name}")
                         break
         
+        # 現在のメッセージに他ユーザー/ロール/全体(@everyone/@here)へのメンションが含まれるか
+        # → 自分へのメンションが無い場合は、連続会話の自動発火を抑止する
+        has_other_mentions_in_current = (
+            (len(message.mentions) > 0) or
+            (len(message.role_mentions) > 0) or
+            getattr(message, "mention_everyone", False)
+        )
+
         # 直前がBOTの連続会話発火条件（1つ前が自分=BOT・メンションなし）
-        if not is_mentioned and message.guild:
+        if not is_mentioned and message.guild and not has_other_mentions_in_current:
             try:
                 async for prev in message.channel.history(limit=1, before=message):
                     # 直前のメッセージがBOT（自分）なら発火
@@ -434,7 +442,7 @@ class UniversalDiscordAI(commands.Bot):
 
         self.logger.debug(f"# サーバー内の連続会話発火条件テスト")
         # サーバー内の連続会話発火条件（2つ前が自分・1つ前が他人・メンションなし）
-        if not is_mentioned and message.guild:
+        if not is_mentioned and message.guild and not has_other_mentions_in_current:
             try:
                 prev_messages = []
                 async for prev in message.channel.history(limit=3, before=message):
