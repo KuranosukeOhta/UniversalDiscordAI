@@ -10,15 +10,19 @@ from typing import Dict, AsyncGenerator, Optional, List
 import aiohttp
 import json
 from aiolimiter import AsyncLimiter
+from utils import ConfigManager
 
 
 class OpenAIHandler:
     """OpenAI API通信ハンドラー"""
     
-    def __init__(self):
+    def __init__(self, config: ConfigManager = None):
         self.api_key = os.getenv('OPENAI_API_KEY')
         self.base_url = "https://api.openai.com/v1"
         self.logger = logging.getLogger(__name__)
+        
+        # 設定マネージャーを設定
+        self.config = config or ConfigManager()
         
         # レート制限設定（動的調整対応）
         self.rate_limiter = AsyncLimiter(max_rate=50, time_period=60)  # 60秒間に50リクエスト
@@ -728,29 +732,6 @@ class OpenAIHandler:
             return []
         
         self.logger.info(f"🔍 画像添付ファイル処理開始: {len(message_attachments)}個の添付ファイル")
-        
-        # 並列処理で画像を処理
-        async def process_single_image(attachment):
-            self.logger.debug(f"添付ファイル処理中: {attachment.filename}")
-            
-            # 画像ファイルかチェック
-            if self._is_image_file(attachment.filename):
-                # 画像の詳細レベルを設定（必要に応じて調整可能）
-                detail = "auto"  # "low", "high", "auto"
-                
-                image_info = {
-                    "url": attachment.url,
-                    "detail": detail,
-                    "filename": attachment.filename,
-                    "size": attachment.size,
-                    "content_type": getattr(attachment, 'content_type', 'unknown')
-                }
-                
-                self.logger.debug(f"✅ 画像として認識: {attachment.filename}")
-                return image_info
-            else:
-                self.logger.debug(f"❌ 画像として認識されず: {attachment.filename}")
-                return None
         
         # 並列処理で画像を処理
         async def process_single_image(attachment):

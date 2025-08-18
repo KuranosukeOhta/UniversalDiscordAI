@@ -53,7 +53,7 @@ class UniversalDiscordAI(commands.Bot):
         # 設定とマネージャーの初期化
         self.config = ConfigManager()
         self.character_manager = CharacterManager()
-        self.openai_handler = OpenAIHandler()
+        self.openai_handler = OpenAIHandler(self.config)
         self.token_counter = TokenCounter()
         
         # BOTインスタンスの管理
