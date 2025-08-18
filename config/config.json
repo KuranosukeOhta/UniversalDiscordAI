@@ -11,7 +11,10 @@
     "max_concurrent_per_channel": 5,
     "message_timeout_seconds": 600,
     "enable_task_cleanup": true,
-    "cleanup_interval_seconds": 180
+    "cleanup_interval_seconds": 180,
+    "dm_chat_enabled": true,
+    "dm_character": "friendly",
+    "dm_response_delay": 1.0
   },
   "character_settings": {
     "default_character": "friendly"
