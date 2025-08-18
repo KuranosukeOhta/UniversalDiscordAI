@@ -391,6 +391,31 @@ class UniversalDiscordAI(commands.Bot):
                         self.logger.debug(f"ロールメンション検知: {role.name}")
                         break
         
+        # サーバー内の連続会話発火条件（2つ前が自分・1つ前が他人・メンションなし）
+        if not is_mentioned and message.guild:
+            try:
+                prev_messages = []
+                async for prev in message.channel.history(limit=3, before=message):
+                    prev_messages.append(prev)
+                    if len(prev_messages) >= 2:
+                        break
+                if len(prev_messages) >= 2:
+                    prev1 = prev_messages[0]  # 直前のメッセージ（1つ前）
+                    prev2 = prev_messages[1]  # 2つ前のメッセージ
+
+                    # 条件: 2つ前が自分 AND 1つ前が自分以外 AND（1つ前が）誰もメンションしていない
+                    if (
+                        prev2.author == self.user
+                        and prev1.author != self.user
+                        and len(prev1.mentions) == 0
+                        and len(prev1.role_mentions) == 0
+                    ):
+                        is_mentioned = True
+                        mention_type = "連続会話（2つ前がBOT・直前が他人・メンションなし）"
+                        self.logger.debug("新しい連続会話発火条件を満たしたためトリガー")
+            except Exception as e:
+                self.logger.debug(f"連続会話条件評価エラー: {e}")
+
         # 前のメッセージがBOTかどうかをチェック（設定で有効化されている場合のみ）
         # ただし、自分がメンションされていない場合は連続会話でもトリガーしない
         is_previous_bot = False
