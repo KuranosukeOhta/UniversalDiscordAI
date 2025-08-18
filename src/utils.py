@@ -608,6 +608,12 @@ class UsageAggregator:
             db = self._load_db()
 
             if user_id not in db:
+                # 新規ユーザーの初期化（first_logged_at は作成時刻を設定）
+                try:
+                    from datetime import datetime, timezone
+                    now_iso = datetime.now(timezone.utc).isoformat()
+                except Exception:
+                    now_iso = ""
                 db[user_id] = {
                     "user_id": user_id,
                     "user_name": user_name,
@@ -617,10 +623,19 @@ class UsageAggregator:
                     "total_tokens": 0,
                     "total_cost_usd": 0.0,
                     "total_cost_jpy": 0.0,
-                    "last_updated": "",
+                    "first_logged_at": now_iso,
+                    "last_updated": now_iso,
                 }
 
             record = db[user_id]
+
+            # 既存レコードで first_logged_at が未設定の場合は補完
+            if not record.get("first_logged_at"):
+                try:
+                    from datetime import datetime, timezone
+                    record["first_logged_at"] = record.get("last_updated") or datetime.now(timezone.utc).isoformat()
+                except Exception:
+                    record["first_logged_at"] = record.get("last_updated", "")
 
             record["user_name"] = user_name  # 最新名で更新
             record["generations"] += 1
