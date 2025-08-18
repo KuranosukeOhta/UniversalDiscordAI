@@ -356,10 +356,12 @@ class UniversalDiscordAI(commands.Bot):
         """メッセージ受信時の処理（非同期最適化版）"""
         # 自分のメッセージは無視
         if message.author == self.user:
+            self.logger.debug(f"自分のメッセージを無視: {message.author}")
             return
             
         # BOTメッセージは無視
         if message.author.bot:
+            self.logger.debug(f"BOTメッセージを無視: {message.author}")
             return
         
         # DMチャットの判定
@@ -391,6 +393,20 @@ class UniversalDiscordAI(commands.Bot):
                         self.logger.debug(f"ロールメンション検知: {role.name}")
                         break
         
+        # 直前がBOTの連続会話発火条件（1つ前が自分=BOT・メンションなし）
+        if not is_mentioned and message.guild:
+            try:
+                async for prev in message.channel.history(limit=1, before=message):
+                    # 直前のメッセージがBOT（自分）なら発火
+                    if prev.author == self.user:
+                        is_mentioned = True
+                        mention_type = "連続会話（直前がBOT）"
+                        self.logger.debug("直前がBOTのためトリガー")
+                    break
+            except Exception as e:
+                self.logger.debug(f"連続会話（直前BOT）条件評価エラー: {e}")
+
+        self.logger.debug(f"# サーバー内の連続会話発火条件テスト")
         # サーバー内の連続会話発火条件（2つ前が自分・1つ前が他人・メンションなし）
         if not is_mentioned and message.guild:
             try:
