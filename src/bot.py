@@ -943,6 +943,13 @@ class CharacterBot:
                 estimated_output_tokens = len(full_response.split())
                 estimated_input_tokens = len(context.split())  # コンテキストのトークン数推定
                 
+                # メッセージ送信の成功/失敗を正確に判定
+                message_sent_success = (
+                    response_message is not None and 
+                    hasattr(response_message, 'id') and 
+                    response_message.id is not None
+                )
+                
                 self.parent_bot.detailed_logger.log_message_generation(
                     server_name=message.guild.name,
                     channel_name=message.channel.name,
@@ -950,7 +957,7 @@ class CharacterBot:
                     character_name=self.character_name,
                     response_time=response_time,
                     token_count=estimated_output_tokens,
-                    message_sent=response_message is not None,
+                    message_sent=message_sent_success,
                     input_tokens=estimated_input_tokens,
                     output_tokens=estimated_output_tokens,
                     response_content=full_response
@@ -1052,7 +1059,7 @@ class CharacterBot:
                         context=context,
                         character_data=self.character_data,
                         function_definitions=function_definitions,
-                        max_completion_tokens=16000,  # GPT-5ではmax_completion_tokensを使用
+                        max_completion_tokens=self.parent_bot.config.get('openai_settings.max_completion_tokens', 16000),  # 設定ファイルから読み込み
                         image_attachments=image_attachments
                     )
                 )
@@ -1129,6 +1136,7 @@ class CharacterBot:
         async for chunk in self.parent_bot.openai_handler.generate_streaming_response(
             context=context,
             character_data=self.character_data,
+            max_completion_tokens=self.parent_bot.config.get('openai_settings.max_completion_tokens', 16000),  # 設定ファイルから読み込み
             image_attachments=image_attachments
         ):
             full_response += chunk
@@ -1139,9 +1147,17 @@ class CharacterBot:
                     response_message = await message.reply(full_response[:2000])
                     is_first_chunk = False
                     self.logger.debug(f"初回メッセージ送信完了: {len(full_response)}文字")
+                except discord.Forbidden as e:
+                    self.logger.error(f"❌ 初回メッセージ送信失敗（権限不足）: {e}")
+                    # 権限不足の場合は、次のチャンクで再試行
+                    continue
+                except discord.HTTPException as e:
+                    self.logger.error(f"❌ 初回メッセージ送信失敗（HTTPエラー）: {e}")
+                    # HTTPエラーの場合は、次のチャンクで再試行
+                    continue
                 except Exception as e:
-                    self.logger.error(f"初回メッセージ送信エラー: {e}")
-                    # 初回送信に失敗した場合は、次のチャンクで再試行
+                    self.logger.error(f"❌ 初回メッセージ送信失敗（予期しないエラー）: {e}")
+                    # 予期しないエラーの場合は、次のチャンクで再試行
                     continue
             
             # 2番目以降のチャンクの場合、メッセージを編集更新
@@ -1158,14 +1174,26 @@ class CharacterBot:
         # 最終的な返答を設定（初回送信が失敗していた場合のフォールバック）
         if not response_message and full_response:
             try:
+                self.logger.info(f"🔄 フォールバックメッセージ送信を試行: {len(full_response)}文字")
                 response_message = await message.reply(full_response[:2000])
+                self.logger.info(f"✅ フォールバックメッセージ送信成功")
+            except discord.Forbidden as e:
+                self.logger.error(f"❌ フォールバックメッセージ送信失敗（権限不足）: {e}")
+            except discord.HTTPException as e:
+                self.logger.error(f"❌ フォールバックメッセージ送信失敗（HTTPエラー）: {e}")
             except Exception as e:
-                self.logger.error(f"フォールバックメッセージ送信エラー: {e}")
+                self.logger.error(f"❌ フォールバックメッセージ送信失敗（予期しないエラー）: {e}")
         elif response_message and full_response:
             try:
                 await response_message.edit(content=full_response[:2000])
             except discord.NotFound:
-                pass
+                self.logger.warning(f"⚠️ メッセージ編集失敗（メッセージが見つかりません）")
+            except discord.Forbidden as e:
+                self.logger.error(f"❌ メッセージ編集失敗（権限不足）: {e}")
+            except discord.HTTPException as e:
+                self.logger.error(f"❌ メッセージ編集失敗（HTTPエラー）: {e}")
+            except Exception as e:
+                self.logger.error(f"❌ メッセージ編集失敗（予期しないエラー）: {e}")
         
         return response_message, full_response
     
