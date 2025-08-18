@@ -49,7 +49,7 @@ class OpenAIHandler:
         context: str, 
         character_data: Dict,
         model: str = "gpt-5",
-        max_completion_tokens: int = 2000,  # GPT-5ではmax_completion_tokensを使用
+        max_completion_tokens: int = 16000,  # GPT-5ではmax_completion_tokensを使用
         temperature: float = 1.0,  # GPT-5はtemperature=1のみサポート
         function_definitions: List[Dict] = None,
         image_attachments: List[Dict] = None
@@ -298,7 +298,7 @@ class OpenAIHandler:
         character_data: Dict,
         function_definitions: List[Dict],
         model: str = "gpt-5",
-        max_completion_tokens: int = 2000,  # GPT-5ではmax_completion_tokensを使用
+        max_completion_tokens: int = 16000,  # GPT-5ではmax_completion_tokensを使用
         temperature: float = 1.0,
         image_attachments: List[Dict] = None
     ) -> Dict:
