@@ -8,6 +8,7 @@
   "bot_settings": {
     "continuous_conversation_enabled": true,
     "max_concurrent_messages": 20,
+    "max_concurrent_per_channel": 5,
     "message_timeout_seconds": 600,
     "enable_task_cleanup": true,
     "cleanup_interval_seconds": 180

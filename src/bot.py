@@ -63,9 +63,21 @@ class UniversalDiscordAI(commands.Bot):
         # BOTインスタンスの管理
         self.character_bots: Dict[str, 'CharacterBot'] = {}
         
-        # 非同期処理制御
+        # 非同期処理制御（チャンネル別対応）
         self.max_concurrent_messages = self.config.get('bot_settings.max_concurrent_messages', 10)
+        self.max_concurrent_per_channel = self.config.get('bot_settings.max_concurrent_per_channel', 3)
         self.message_semaphore = asyncio.Semaphore(self.max_concurrent_messages)
+        
+        # チャンネル別のセマフォ制御
+        self.channel_semaphores: Dict[int, asyncio.Semaphore] = {}
+        self.channel_semaphore_lock = asyncio.Lock()
+        
+        # メッセージキューイングシステム
+        self.message_queue: Dict[int, asyncio.Queue] = {}  # チャンネルID -> キュー
+        self.queue_processor_tasks: Dict[int, asyncio.Task] = {}  # チャンネルID -> キュー処理タスク
+        self.queue_lock = asyncio.Lock()
+        
+        # アクティブメッセージタスクの管理
         self.active_message_tasks: Dict[int, MessageTask] = {}
         self.task_cleanup_interval = 300  # 5分ごとにクリーンアップ
         
@@ -79,6 +91,7 @@ class UniversalDiscordAI(commands.Bot):
             'concurrent_messages_peak': 0,
             'average_response_time': 0.0,
             'failed_messages': 0,
+            'queued_messages': 0,
             'server_message_counts': {},
             'channel_message_counts': {}
         }
@@ -118,6 +131,81 @@ class UniversalDiscordAI(commands.Bot):
                 await self._cleanup_completed_tasks()
             except Exception as e:
                 self.logger.error(f"タスククリーンアップ中にエラー: {e}")
+    
+    async def _get_channel_semaphore(self, channel_id: int) -> asyncio.Semaphore:
+        """チャンネル別のセマフォを取得または作成"""
+        async with self.channel_semaphore_lock:
+            if channel_id not in self.channel_semaphores:
+                self.channel_semaphores[channel_id] = asyncio.Semaphore(self.max_concurrent_per_channel)
+                self.logger.debug(f"チャンネル {channel_id} 用のセマフォを作成 (制限: {self.max_concurrent_per_channel})")
+            return self.channel_semaphores[channel_id]
+    
+    async def _get_or_create_message_queue(self, channel_id: int) -> asyncio.Queue:
+        """チャンネル用のメッセージキューを取得または作成"""
+        async with self.queue_lock:
+            if channel_id not in self.message_queue:
+                self.message_queue[channel_id] = asyncio.Queue()
+                self.logger.debug(f"チャンネル {channel_id} 用のメッセージキューを作成")
+            return self.message_queue[channel_id]
+    
+    async def _start_queue_processor(self, channel_id: int):
+        """チャンネル用のキュー処理タスクを開始"""
+        if channel_id in self.queue_processor_tasks and not self.queue_processor_tasks[channel_id].done():
+            return  # 既に実行中
+        
+        async def process_queue():
+            """キュー内のメッセージを順次処理"""
+            queue = self.message_queue[channel_id]
+            self.logger.debug(f"チャンネル {channel_id} のキュー処理を開始")
+            
+            while True:
+                try:
+                    # キューからメッセージを取得（タイムアウト付き）
+                    message_data = await asyncio.wait_for(queue.get(), timeout=60.0)
+                    
+                    if message_data is None:  # 終了シグナル
+                        break
+                    
+                    message, character_name = message_data
+                    self.logger.debug(f"キューからメッセージを取得: {message.id} (チャンネル: {channel_id})")
+                    
+                    # メッセージ処理を開始
+                    asyncio.create_task(self._process_queued_message(message, character_name))
+                    
+                    # キュー処理完了をマーク
+                    queue.task_done()
+                    
+                except asyncio.TimeoutError:
+                    # タイムアウト時はキューが空かチェック
+                    if queue.empty():
+                        self.logger.debug(f"チャンネル {channel_id} のキューが空のため処理を終了")
+                        break
+                    continue
+                except Exception as e:
+                    self.logger.error(f"キュー処理中にエラー: {e}")
+                    continue
+        
+        # キュー処理タスクを作成
+        self.queue_processor_tasks[channel_id] = asyncio.create_task(process_queue())
+        self.logger.debug(f"チャンネル {channel_id} のキュー処理タスクを開始")
+    
+    async def _process_queued_message(self, message: discord.Message, character_name: str):
+        """キューから取得したメッセージを処理"""
+        try:
+            # チャンネル別セマフォで同時実行数を制御
+            channel_semaphore = await self._get_channel_semaphore(message.channel.id)
+            
+            async with channel_semaphore:
+                # メッセージ処理を実行
+                await self._process_message_with_character(message, self.character_bots[character_name], character_name)
+                
+                # 統計情報を更新
+                self.stats['total_messages_processed'] += 1
+                self.stats['queued_messages'] += 1
+                
+        except Exception as e:
+            self.logger.error(f"キュー処理メッセージの処理中にエラー: {e}")
+            self.stats['failed_messages'] += 1
                 
     async def _cleanup_completed_tasks(self):
         """完了したタスクをクリーンアップ"""
@@ -204,6 +292,31 @@ class UniversalDiscordAI(commands.Bot):
             if not task_info.task.done():
                 task_info.task.cancel()
                 self.logger.debug(self.config.get('logging_settings.log_messages.task_cancelled', 'タスクをキャンセル: {message_id}').format(message_id=task_info.message_id))
+        
+        # キューイングシステムのクリーンアップ
+        self.logger.info("キューイングシステムのクリーンアップを開始...")
+        
+        # 各チャンネルのキューに終了シグナルを送信
+        for channel_id, queue in self.message_queue.items():
+            try:
+                await queue.put(None)  # 終了シグナル
+                self.logger.debug(f"チャンネル {channel_id} のキューに終了シグナルを送信")
+            except Exception as e:
+                self.logger.warning(f"チャンネル {channel_id} のキュー終了シグナル送信エラー: {e}")
+        
+        # キュー処理タスクの完了を待機
+        for channel_id, task in self.queue_processor_tasks.items():
+            if not task.done():
+                try:
+                    await asyncio.wait_for(task, timeout=5.0)
+                    self.logger.debug(f"チャンネル {channel_id} のキュー処理タスク完了")
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"チャンネル {channel_id} のキュー処理タスクがタイムアウト、キャンセル")
+                    task.cancel()
+                except Exception as e:
+                    self.logger.warning(f"チャンネル {channel_id} のキュー処理タスク完了待機エラー: {e}")
+        
+        self.logger.info("キューイングシステムのクリーンアップ完了")
         
         # ステータスをオフラインに設定（複数回試行）
         for attempt in range(3):
@@ -294,98 +407,142 @@ class UniversalDiscordAI(commands.Bot):
         asyncio.create_task(self._handle_mention_async(message))
         
     async def _handle_mention_async(self, message: discord.Message):
-        """メンション時の返答処理（非同期版）"""
-        # セマフォで同時実行数を制御
-        async with self.message_semaphore:
-            try:
-                # 現在の同時実行数を更新
-                current_concurrent = len(self.active_message_tasks)
-                if current_concurrent > self.stats['concurrent_messages_peak']:
-                    self.stats['concurrent_messages_peak'] = current_concurrent
+        """メンション時の返答処理（非同期版・チャンネル別並列処理対応）"""
+        channel_id = message.channel.id
+        
+        try:
+            # チャンネル別セマフォで同時実行数をチェック
+            channel_semaphore = await self._get_channel_semaphore(channel_id)
+            
+            # チャンネルでの現在の同時実行数をチェック
+            current_channel_tasks = sum(1 for task in self.active_message_tasks.values() 
+                                      if task.channel_id == channel_id and task.status == "processing")
+            
+            if current_channel_tasks >= self.max_concurrent_per_channel:
+                # チャンネルの同時実行制限に達している場合、キューに追加
+                self.logger.info(f"チャンネル {channel_id} の同時実行制限に達したため、メッセージ {message.id} をキューに追加")
                 
-                # 統計情報を更新
-                if message.guild:
-                    server_name = message.guild.name
-                    channel_name = message.channel.name
-                    
-                    # サーバー別メッセージ数
-                    if server_name not in self.stats['server_message_counts']:
-                        self.stats['server_message_counts'][server_name] = 0
-                    self.stats['server_message_counts'][server_name] += 1
-                    
-                    # チャンネル別メッセージ数
-                    channel_key = f"{server_name}#{channel_name}"
-                    if channel_key not in self.stats['channel_message_counts']:
-                        self.stats['channel_message_counts'][channel_key] = 0
-                    self.stats['channel_message_counts'][channel_key] += 1
+                # メッセージキューを取得または作成
+                queue = await self._get_or_create_message_queue(channel_id)
                 
                 # 使用する人格を決定
                 character_name = self.config.get('character_settings.default_character', 'friendly')
-                character_bot = self.character_bots.get(character_name)
                 
-                if not character_bot:
-                    await message.reply("申し訳ございません。人格設定の読み込みに失敗しました。")
-                    return
+                # キューにメッセージを追加
+                await queue.put((message, character_name))
+                self.stats['queued_messages'] += 1
                 
-                # メッセージ処理タスクを作成
-                task = asyncio.create_task(
-                    self._process_message_with_character(message, character_bot, character_name)
-                )
+                # キュー処理タスクを開始（まだ開始されていない場合）
+                await self._start_queue_processor(channel_id)
                 
-                # タスク情報を記録
-                task_info = MessageTask(
-                    message_id=message.id,
-                    channel_id=message.channel.id,
-                    guild_id=message.guild.id if message.guild else None,
-                    task=task,
-                    start_time=datetime.now(),
-                    character_name=character_name
-                )
-                
-                self.active_message_tasks[message.id] = task_info
-                
-                # タスク完了まで待機
-                await task
-                
-                # 成功時の統計更新
-                self.stats['total_messages_processed'] += 1
-                task_info.status = "completed"
-                
-            except asyncio.CancelledError:
-                # タスクがキャンセルされた場合
-                if message.id in self.active_message_tasks:
-                    self.active_message_tasks[message.id].status = "cancelled"
-                self.logger.info(f"メッセージ処理がキャンセルされました: {message.id}")
-                
-            except Exception as e:
-                # エラー時の統計更新
-                self.stats['failed_messages'] += 1
-                if message.id in self.active_message_tasks:
-                    self.active_message_tasks[message.id].status = "failed"
-                
-                # エラーログ
-                if message.guild:
-                    self.detailed_logger.log_error_detail(
-                        error=e,
-                        context=f"メンション処理 - サーバー: {message.guild.name}, チャンネル: #{message.channel.name}",
-                        additional_info=f"ユーザー: {message.author.display_name}"
-                    )
-                else:
-                    self.detailed_logger.log_error_detail(
-                        error=e,
-                        context="メンション処理 - DM",
-                        additional_info=f"ユーザー: {message.author.display_name}"
-                    )
-                
+                # キューに追加されたことをユーザーに通知
                 try:
-                    await message.reply(f"エラーが発生しました: {str(e)}")
+                    await message.reply("メッセージを処理中です。順番にお待ちください。")
                 except:
                     pass
-                    
-            finally:
-                # セマフォの解放は自動的に行われる
-                pass
                 
+                return
+            
+            # チャンネルでの同時実行制限内の場合、直接処理
+            async with channel_semaphore:
+                # グローバルセマフォでも制御
+                async with self.message_semaphore:
+                    try:
+                        # 現在の同時実行数を更新
+                        current_concurrent = len(self.active_message_tasks)
+                        if current_concurrent > self.stats['concurrent_messages_peak']:
+                            self.stats['concurrent_messages_peak'] = current_concurrent
+                        
+                        # 統計情報を更新
+                        if message.guild:
+                            server_name = message.guild.name
+                            channel_name = message.channel.name
+                            
+                            # サーバー別メッセージ数
+                            if server_name not in self.stats['server_message_counts']:
+                                self.stats['server_message_counts'][server_name] = 0
+                            self.stats['server_message_counts'][server_name] += 1
+                            
+                            # チャンネル別メッセージ数
+                            channel_key = f"{server_name}#{channel_name}"
+                            if channel_key not in self.stats['channel_message_counts']:
+                                self.stats['channel_message_counts'][channel_key] = 0
+                            self.stats['channel_message_counts'][channel_key] += 1
+                        
+                        # 使用する人格を決定
+                        character_name = self.config.get('character_settings.default_character', 'friendly')
+                        character_bot = self.character_bots.get(character_name)
+                        
+                        if not character_bot:
+                            await message.reply("申し訳ございません。人格設定の読み込みに失敗しました。")
+                            return
+                        
+                        # メッセージ処理タスクを作成
+                        task = asyncio.create_task(
+                            self._process_message_with_character(message, character_bot, character_name)
+                        )
+                        
+                        # タスク情報を記録
+                        task_info = MessageTask(
+                            message_id=message.id,
+                            channel_id=message.channel.id,
+                            guild_id=message.guild.id if message.guild else None,
+                            task=task,
+                            start_time=datetime.now(),
+                            character_name=character_name
+                        )
+                        
+                        self.active_message_tasks[message.id] = task_info
+                        
+                        # タスク完了まで待機
+                        await task
+                        
+                        # 成功時の統計更新
+                        self.stats['total_messages_processed'] += 1
+                        task_info.status = "completed"
+                        
+                    except asyncio.CancelledError:
+                        # タスクがキャンセルされた場合
+                        if message.id in self.active_message_tasks:
+                            self.active_message_tasks[message.id].status = "cancelled"
+                        self.logger.info(f"メッセージ処理がキャンセルされました: {message.id}")
+                        
+                    except Exception as e:
+                        # エラー時の統計更新
+                        self.stats['failed_messages'] += 1
+                        if message.id in self.active_message_tasks:
+                            self.active_message_tasks[message.id].status = "failed"
+                        
+                        # エラーログ
+                        if message.guild:
+                            self.detailed_logger.log_error_detail(
+                                error=e,
+                                context=f"メンション処理 - サーバー: {message.guild.name}, チャンネル: #{message.channel.name}",
+                                additional_info=f"ユーザー: {message.author.display_name}"
+                            )
+                        else:
+                            self.detailed_logger.log_error_detail(
+                                error=e,
+                                context="メンション処理 - DM",
+                                additional_info=f"ユーザー: {message.author.display_name}"
+                            )
+                        
+                        try:
+                            await message.reply(f"エラーが発生しました: {str(e)}")
+                        except:
+                            pass
+                            
+                    finally:
+                        # セマフォの解放は自動的に行われる
+                        pass
+                        
+        except Exception as e:
+            self.logger.error(f"メンション処理の開始中にエラー: {e}")
+            try:
+                await message.reply("申し訳ございません。メッセージ処理の開始に失敗しました。")
+            except:
+                pass
+    
     async def _process_message_with_character(self, message: discord.Message, character_bot: 'CharacterBot', character_name: str):
         """キャラクターを使用してメッセージを処理"""
         start_time = asyncio.get_event_loop().time()
@@ -574,7 +731,7 @@ class UniversalDiscordAI(commands.Bot):
             await self.handle_functions_command(message)
     
     async def handle_status_command(self, message: discord.Message):
-        """ステータス確認コマンドの処理（非同期処理情報追加）"""
+        """ステータス確認コマンドの処理（非同期処理情報追加・キューイング対応）"""
         try:
             # OpenAI API接続状態を取得
             openai_status = self.openai_handler.get_connection_status()
@@ -583,6 +740,19 @@ class UniversalDiscordAI(commands.Bot):
             # 現在の同時処理状況
             current_concurrent = len(self.active_message_tasks)
             processing_tasks = [t for t in self.active_message_tasks.values() if t.status == "processing"]
+            
+            # チャンネル別の処理状況
+            channel_processing_stats = {}
+            for task in self.active_message_tasks.values():
+                if task.status == "processing":
+                    channel_id = task.channel_id
+                    if channel_id not in channel_processing_stats:
+                        channel_processing_stats[channel_id] = 0
+                    channel_processing_stats[channel_id] += 1
+            
+            # キューイング状況
+            queued_messages_total = sum(queue.qsize() for queue in self.message_queue.values())
+            active_queues = len([q for q in self.message_queue.values() if not q.empty()])
             
             # サーバー別統計
             server_stats = ""
@@ -597,6 +767,20 @@ class UniversalDiscordAI(commands.Bot):
                 channel_stats = "\n📈 **チャンネル別統計**\n"
                 for channel, count in sorted(self.stats['channel_message_counts'].items(), key=lambda x: x[1], reverse=True)[:5]:
                     channel_stats += f"• {channel}: {count}件\n"
+            
+            # チャンネル別処理状況
+            channel_processing_info = ""
+            if channel_processing_stats:
+                channel_processing_info = "\n🔧 **チャンネル別処理状況**\n"
+                for channel_id, count in sorted(channel_processing_stats.items(), key=lambda x: x[1], reverse=True):
+                    channel_name = f"チャンネル{channel_id}"
+                    try:
+                        channel = self.get_channel(channel_id)
+                        if channel:
+                            channel_name = f"#{channel.name}"
+                    except:
+                        pass
+                    channel_processing_info += f"• {channel_name}: {count}件処理中\n"
             
             # ステータス情報を構築
             status_info = f"""🤖 **Universal Discord AI ステータス**
@@ -618,12 +802,18 @@ class UniversalDiscordAI(commands.Bot):
 
 🚀 **非同期処理状況**
 • 最大同時処理数: {self.max_concurrent_messages}
+• チャンネル別最大同時処理数: {self.max_concurrent_per_channel}
 • 現在の同時処理数: {current_concurrent}
 • 処理中タスク: {len(processing_tasks)}
 • 総処理メッセージ数: {self.stats['total_messages_processed']}
 • 平均応答時間: {self.stats['average_response_time']:.2f}秒
 • ピーク同時処理数: {self.stats['concurrent_messages_peak']}
-• 失敗メッセージ数: {self.stats['failed_messages']}{server_stats}{channel_stats}"""
+• 失敗メッセージ数: {self.stats['failed_messages']}
+
+📋 **キューイング状況**
+• キュー内メッセージ数: {queued_messages_total}
+• アクティブキュー数: {active_queues}
+• キュー処理済みメッセージ数: {self.stats['queued_messages']}{channel_processing_info}{server_stats}{channel_stats}"""
             
             await message.reply(status_info)
             
