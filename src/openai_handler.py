@@ -56,23 +56,10 @@ class OpenAIHandler:
             yield "エラー: OpenAI APIキーが設定されていません"
             return
         
-        # 接続状態をチェック（自動復元を試行）
-        connection_attempts = 0
-        max_connection_attempts = 3
-        
-        while connection_attempts < max_connection_attempts:
-            if await self._check_connection_health():
-                break
-            
-            connection_attempts += 1
-            if connection_attempts < max_connection_attempts:
-                self.logger.warning(f"OpenAI API接続が不安定です。自動復元を試行中... (試行 {connection_attempts}/{max_connection_attempts})")
-                yield f"接続が不安定です。自動復元を試行中... (試行 {connection_attempts}/{max_connection_attempts})"
-                await asyncio.sleep(2)  # 2秒待機してから再試行
-            else:
-                self.logger.error("OpenAI API接続の自動復元に失敗しました。手動での再試行をお願いします。")
-                yield "エラー: OpenAI APIへの接続が不安定です。しばらく待ってから再試行してください。"
-                return
+        # 接続状態を事前にチェック（高速化）
+        if not await self._check_connection_health_fast():
+            yield "接続が不安定です。しばらく待ってから再試行してください。"
+            return
             
         # システムプロンプトを構築
         system_prompt = self._build_system_prompt(character_data)
@@ -452,8 +439,59 @@ class OpenAIHandler:
         except Exception as e:
             self.logger.error(f"レート制限処理エラー: {e}")
             
+    async def test_connection_fast(self) -> bool:
+        """OpenAI APIへの軽量接続テスト（高速チェック用）"""
+        if not self.api_key:
+            self.logger.error("OpenAI APIキーが設定されていません")
+            return False
+            
+        try:
+            self.logger.debug("OpenAI API軽量接続テストを開始...")
+            
+            # 短いタイムアウトで軽量なテストを実行
+            fast_timeout = aiohttp.ClientTimeout(total=5)  # 5秒に短縮
+            
+            async with aiohttp.ClientSession(timeout=fast_timeout) as session:
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                }
+                
+                # 最小限のテストリクエスト
+                test_data = {
+                    "model": "gpt-5",
+                    "messages": [{"role": "user", "content": "Hi"}],
+                    "max_completion_tokens": 1
+                }
+                
+                self.logger.debug(f"軽量テストリクエスト送信中: {self.base_url}/chat/completions")
+                
+                async with session.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=test_data
+                ) as response:
+                    
+                    if response.status == 200:
+                        self.logger.info("OpenAI API軽量接続テスト成功")
+                        return True
+                    else:
+                        error_text = await response.text()
+                        self.logger.error(f"OpenAI API軽量接続テスト失敗 - HTTP {response.status}: {error_text}")
+                        return False
+                        
+        except asyncio.TimeoutError:
+            self.logger.error("OpenAI API軽量接続テストがタイムアウトしました")
+            return False
+        except aiohttp.ClientError as e:
+            self.logger.error(f"OpenAI API軽量接続テストでネットワークエラー: {e}")
+            return False
+        except Exception as e:
+            self.logger.error(f"OpenAI API軽量接続テストで予期しないエラー: {e}")
+            return False
+
     async def test_connection(self) -> bool:
-        """OpenAI APIへの接続をテスト"""
+        """OpenAI APIへの接続をテスト（従来版、詳細なテスト）"""
         if not self.api_key:
             self.logger.error("OpenAI APIキーが設定されていません")
             return False
@@ -541,8 +579,32 @@ class OpenAIHandler:
                 self.connection_status = "degraded"
                 self.logger.warning(f"OpenAI API接続状態: 不安定 (連続失敗: {self.consecutive_failures}回)")
     
+    async def _check_connection_health_fast(self) -> bool:
+        """高速な接続状態チェック（初回メッセージ送信の遅延を防ぐ）"""
+        if self.connection_status == "healthy":
+            self.logger.debug("OpenAI API接続状態: 正常（高速チェック）")
+            return True
+        
+        if self.connection_status == "failed":
+            # 失敗状態の場合は即座にFalseを返す（自動復元は行わない）
+            self.logger.warning("OpenAI API接続状態: 失敗（高速チェック）")
+            return False
+        
+        # 不安定状態の場合は短時間待機
+        if self.connection_status == "degraded":
+            self.logger.warning("OpenAI API接続状態: 不安定（高速チェック）")
+            await asyncio.sleep(1)  # 5秒から1秒に短縮
+            return True
+        
+        # 不明な状態の場合は軽量な接続テストを実行
+        if self.connection_status == "unknown":
+            self.logger.info("OpenAI API接続状態: 不明 - 軽量接続テストを実行（高速チェック）")
+            return await self._attempt_recovery_fast()
+        
+        return False
+
     async def _check_connection_health(self) -> bool:
-        """接続状態の健全性をチェック"""
+        """接続状態の健全性をチェック（従来版、詳細な復元処理）"""
         if self.connection_status == "healthy":
             self.logger.debug("OpenAI API接続状態: 正常")
             return True
@@ -574,8 +636,30 @@ class OpenAIHandler:
         
         return False
     
+    async def _attempt_recovery_fast(self) -> bool:
+        """軽量な接続復元を試行（高速チェック用）"""
+        try:
+            self.logger.info("OpenAI API軽量接続テストを実行中...")
+            
+            # 軽量な接続テストを実行（短いタイムアウト）
+            if await self.test_connection_fast():
+                self.connection_status = "healthy"
+                self.consecutive_failures = 0
+                self.logger.info("OpenAI API接続の軽量復元に成功しました")
+                return True
+            else:
+                self.logger.warning("OpenAI API軽量接続テストに失敗しました")
+                return False
+                
+        except asyncio.TimeoutError:
+            self.logger.error("OpenAI API軽量接続テストがタイムアウトしました")
+            return False
+        except Exception as e:
+            self.logger.error(f"OpenAI API接続の軽量復元中にエラー: {e}")
+            return False
+
     async def _attempt_recovery(self) -> bool:
-        """接続の自動復元を試行"""
+        """接続の自動復元を試行（従来版、詳細な復元処理）"""
         try:
             self.logger.info("OpenAI API接続テストを実行中...")
             
@@ -616,14 +700,17 @@ class OpenAIHandler:
         
         return status_info
     
-    def process_image_attachments(self, message_attachments: List) -> List[Dict]:
-        """Discordメッセージの添付ファイルから画像データを処理"""
-        image_data = []
+    async def process_image_attachments(self, message_attachments: List) -> List[Dict]:
+        """Discordメッセージの添付ファイルから画像データを処理（並列処理対応）"""
+        if not message_attachments:
+            self.logger.info("📝 画像添付なし")
+            return []
         
         self.logger.info(f"🔍 画像添付ファイル処理開始: {len(message_attachments)}個の添付ファイル")
         
-        for i, attachment in enumerate(message_attachments):
-            self.logger.info(f"添付ファイル {i+1} を処理中: {attachment.filename}")
+        # 並列処理で画像を処理
+        async def process_single_image(attachment):
+            self.logger.debug(f"添付ファイル処理中: {attachment.filename}")
             
             # 画像ファイルかチェック
             if self._is_image_file(attachment.filename):
@@ -638,15 +725,75 @@ class OpenAIHandler:
                     "content_type": getattr(attachment, 'content_type', 'unknown')
                 }
                 
-                image_data.append(image_info)
-                
-                self.logger.info(f"✅ 画像として認識: {attachment.filename}")
-                self.logger.info(f"  - URL: {attachment.url}")
-                self.logger.info(f"  - サイズ: {attachment.size} bytes")
-                self.logger.info(f"  - 詳細レベル: {detail}")
+                self.logger.debug(f"✅ 画像として認識: {attachment.filename}")
+                return image_info
             else:
-                self.logger.info(f"❌ 画像として認識されず: {attachment.filename}")
-                self.logger.info(f"  - ファイル拡張子チェック結果: 非画像ファイル")
+                self.logger.debug(f"❌ 画像として認識されず: {attachment.filename}")
+                return None
+        
+        # 並列処理で画像を処理
+        async def process_single_image(attachment):
+            self.logger.debug(f"添付ファイル処理中: {attachment.filename}")
+            
+            # 画像ファイルかチェック
+            if self._is_image_file(attachment.filename):
+                # 画像の詳細レベルを設定（必要に応じて調整可能）
+                detail = "auto"  # "low", "high", "auto"
+                
+                image_info = {
+                    "url": attachment.url,
+                    "detail": detail,
+                    "filename": attachment.filename,
+                    "size": attachment.size,
+                    "content_type": getattr(attachment, 'content_type', 'unknown')
+                }
+                
+                self.logger.debug(f"✅ 画像として認識: {attachment.filename}")
+                return image_info
+            else:
+                self.logger.debug(f"❌ 画像として認識されず: {attachment.filename}")
+                return None
+        
+        # 並列処理で画像を処理
+        import asyncio
+        try:
+            # 非同期処理として並列実行
+            tasks = [process_single_image(att) for att in message_attachments]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # 成功した結果のみを収集
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    self.logger.error(f"画像 {i+1} の処理でエラー: {result}")
+                elif result:
+                    image_data.append(result)
+                    self.logger.info(f"✅ 画像として認識: {result['filename']}")
+                    self.logger.info(f"  - URL: {result['url']}")
+                    self.logger.info(f"  - サイズ: {result['size']} bytes")
+                    self.logger.info(f"  - 詳細レベル: {result['detail']}")
+                else:
+                    self.logger.info(f"❌ 画像として認識されず: {message_attachments[i].filename}")
+                    
+        except Exception as e:
+            self.logger.error(f"並列画像処理中にエラー: {e}")
+            # フォールバック: 従来の逐次処理
+            self.logger.info("🔄 並列処理に失敗、従来の逐次処理にフォールバック")
+            for i, attachment in enumerate(message_attachments):
+                self.logger.info(f"添付ファイル {i+1} を処理中: {attachment.filename}")
+                
+                if self._is_image_file(attachment.filename):
+                    detail = "auto"
+                    image_info = {
+                        "url": attachment.url,
+                        "detail": detail,
+                        "filename": attachment.filename,
+                        "size": attachment.size,
+                        "content_type": getattr(attachment, 'content_type', 'unknown')
+                    }
+                    image_data.append(image_info)
+                    self.logger.info(f"✅ 画像として認識: {attachment.filename}")
+                else:
+                    self.logger.info(f"❌ 画像として認識されず: {attachment.filename}")
         
         self.logger.info(f"📊 画像処理結果: {len(image_data)}個の画像を認識")
         return image_data

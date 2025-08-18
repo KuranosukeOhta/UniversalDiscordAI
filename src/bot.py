@@ -413,8 +413,8 @@ class UniversalDiscordAI(commands.Bot):
                         self.logger.info(f"  - コンテンツタイプ: {getattr(attachment, 'content_type', 'unknown')}")
                         self.logger.info(f"  - プロキシURL: {attachment.proxy_url}")
                     
-                    # 画像処理用のデータを生成
-                    image_attachments = self.openai_handler.process_image_attachments(message.attachments)
+                    # 画像処理用のデータを生成（非同期処理）
+                    image_attachments = await self.openai_handler.process_image_attachments(message.attachments)
                     
                     if image_attachments:
                         self.logger.info(f"✅ 画像処理対象: {len(image_attachments)}個の画像")
@@ -853,21 +853,35 @@ class CharacterBot:
                 self.logger.info(f"🖼️ 画像付きレスポンス生成 - 画像数: {len(image_attachments)}")
             
             if use_function_calls:
-                # ファンクションコール対応のレスポンス生成
-                self.logger.info(f"🚀 ファンクションコール対応レスポンス生成を開始")
+                # ファンクションコール対応のレスポンス生成（並列処理とタイムアウト短縮）
+                self.logger.info(f"🚀 ファンクションコール対応レスポンス生成を開始（タイムアウト: 10秒）")
                 
-                response_data = await self.parent_bot.openai_handler.generate_response_with_function_calls(
-                    context=context,
-                    character_data=self.character_data,
-                    function_definitions=function_definitions,
-                    max_completion_tokens=16000,
-                    image_attachments=image_attachments
+                # ファンクションコールとストリーミングを並列実行
+                function_call_task = asyncio.create_task(
+                    self.parent_bot.openai_handler.generate_response_with_function_calls(
+                        context=context,
+                        character_data=self.character_data,
+                        function_definitions=function_definitions,
+                        max_completion_tokens=16000,
+                        image_attachments=image_attachments
+                    )
                 )
                 
-                if not response_data["success"]:
-                    # エラーの場合はストリーミングレスポンスにフォールバック
-                    self.logger.warning(f"❌ ファンクションコールレスポンス生成失敗: {response_data['error']}")
-                    self.logger.info(f"🔄 ストリーミングレスポンスにフォールバック")
+                # 短いタイムアウトでファンクションコールを待機
+                try:
+                    response_data = await asyncio.wait_for(function_call_task, timeout=10.0)
+                    if response_data["success"]:
+                        # 成功した場合はファンクションコール処理を継続
+                        pass
+                    else:
+                        # エラーの場合はストリーミングレスポンスにフォールバック
+                        self.logger.warning(f"❌ ファンクションコールレスポンス生成失敗: {response_data['error']}")
+                        self.logger.info(f"🔄 ストリーミングレスポンスにフォールバック")
+                        return await self._generate_streaming_response_internal(message, context, image_attachments)
+                        
+                except asyncio.TimeoutError:
+                    # タイムアウトした場合は即座にストリーミングに移行
+                    self.logger.info(f"⏰ ファンクションコール処理がタイムアウト（10秒）、ストリーミングに即座に移行")
                     return await self._generate_streaming_response_internal(message, context, image_attachments)
                 
                 # レスポンスからツールコールをチェック
