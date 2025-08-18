@@ -93,7 +93,8 @@ class UniversalDiscordAI(commands.Bot):
             'failed_messages': 0,
             'queued_messages': 0,
             'server_message_counts': {},
-            'channel_message_counts': {}
+            'channel_message_counts': {},
+            'dm_message_counts': 0
         }
         
     async def setup_hook(self):
@@ -360,12 +361,26 @@ class UniversalDiscordAI(commands.Bot):
         # BOTメッセージは無視
         if message.author.bot:
             return
-            
-        # メンションチェック（個人メンションまたはBOTロールメンション）
+        
+        # DMチャットの判定
+        is_dm = isinstance(message.channel, discord.DMChannel)
+        
+        # メンションチェック（自分がメンションされているかどうかのみ）
         is_mentioned = self.user.mentioned_in(message)
         mention_type = "個人メンション"
         
-        # ロールメンションもチェック
+        # DMチャットの場合は常に処理対象とする
+        if is_dm:
+            # DMチャット機能が無効化されている場合は処理しない
+            if not self.config.get('bot_settings.dm_chat_enabled', True):
+                self.logger.debug(f"DMチャット機能が無効化されているため、メッセージを無視: {message.author}")
+                return
+                
+            is_mentioned = True
+            mention_type = "DMチャット"
+            self.logger.debug(f"DMチャット受信: {message.author} -> {message.content}")
+        
+        # ロールメンションもチェック（サーバー内のみ）
         if not is_mentioned and message.guild:
             bot_member = message.guild.get_member(self.user.id)
             if bot_member:
@@ -377,18 +392,28 @@ class UniversalDiscordAI(commands.Bot):
                         break
         
         # 前のメッセージがBOTかどうかをチェック（設定で有効化されている場合のみ）
+        # ただし、自分がメンションされていない場合は連続会話でもトリガーしない
         is_previous_bot = False
-        if self.config.get('bot_settings.continuous_conversation_enabled', True):
+        if self.config.get('bot_settings.continuous_conversation_enabled', True) and is_mentioned:
             is_previous_bot = await self.is_previous_message_from_bot(message)
             if is_previous_bot:
                 mention_type = "連続会話（前のメッセージがBOT）"
-                is_mentioned = True
+                # is_mentionedは既にTrueなので変更不要
         
-        # 詳細ログ出力
+        # 詳細ログ出力（DMチャットの場合は特別処理）
         if message.guild:
             self.detailed_logger.log_mention_detection(
                 server_name=message.guild.name,
                 channel_name=message.channel.name,
+                user_name=message.author.display_name,
+                mention_type=mention_type,
+                message_content=message.content
+            )
+        elif is_dm:
+            # DMチャット用のログ出力
+            self.detailed_logger.log_mention_detection(
+                server_name="DMチャット",
+                channel_name=f"@{message.author.display_name}",
                 user_name=message.author.display_name,
                 mention_type=mention_type,
                 message_content=message.content
@@ -402,10 +427,14 @@ class UniversalDiscordAI(commands.Bot):
             # コマンド処理をチェック
             await self.handle_commands(message)
             return
-            
-        # 非同期で返答処理を開始（同時処理対応）
-        asyncio.create_task(self._handle_mention_async(message))
         
+        # DMチャットの場合は専用処理、サーバー内の場合は通常処理
+        if is_dm:
+            asyncio.create_task(self._handle_dm_message(message))
+        else:
+            # 非同期で返答処理を開始（同時処理対応）
+            asyncio.create_task(self._handle_mention_async(message))
+    
     async def _handle_mention_async(self, message: discord.Message):
         """メンション時の返答処理（非同期版・チャンネル別並列処理対応）"""
         channel_id = message.channel.id
@@ -468,6 +497,13 @@ class UniversalDiscordAI(commands.Bot):
                             if channel_key not in self.stats['channel_message_counts']:
                                 self.stats['channel_message_counts'][channel_key] = 0
                             self.stats['channel_message_counts'][channel_key] += 1
+                        else:
+                            # DMチャットの場合
+                            dm_key = f"DM@{message.author.display_name}"
+                            if dm_key not in self.stats['channel_message_counts']:
+                                self.stats['channel_message_counts'][dm_key] = 0
+                            self.stats['channel_message_counts'][dm_key] += 1
+                            self.stats['dm_message_counts'] += 1
                         
                         # 使用する人格を決定
                         character_name = self.config.get('character_settings.default_character', 'friendly')
@@ -499,6 +535,7 @@ class UniversalDiscordAI(commands.Bot):
                         
                         # 成功時の統計更新
                         self.stats['total_messages_processed'] += 1
+                        self.stats['dm_message_counts'] += 1
                         task_info.status = "completed"
                         
                     except asyncio.CancelledError:
@@ -540,6 +577,74 @@ class UniversalDiscordAI(commands.Bot):
             self.logger.error(f"メンション処理の開始中にエラー: {e}")
             try:
                 await message.reply("申し訳ございません。メッセージ処理の開始に失敗しました。")
+            except:
+                pass
+    
+    async def _handle_dm_message(self, message: discord.Message):
+        """DMチャット専用の処理"""
+        try:
+            # DM用の人格を決定
+            dm_character = self.config.get('bot_settings.dm_character', 'friendly')
+            
+            # 遅延設定（スパム防止）
+            dm_delay = self.config.get('bot_settings.dm_response_delay', 1.0)
+            if dm_delay > 0:
+                await asyncio.sleep(dm_delay)
+            
+            # 既存の処理フローを再利用
+            character_bot = self.character_bots.get(dm_character)
+            if not character_bot:
+                await message.reply("申し訳ございません。人格設定の読み込みに失敗しました。")
+                return
+            
+            # メッセージ処理タスクを作成
+            task = asyncio.create_task(
+                self._process_message_with_character(message, character_bot, dm_character)
+            )
+            
+            # タスク情報を記録
+            task_info = MessageTask(
+                message_id=message.id,
+                channel_id=message.channel.id,
+                guild_id=None,  # DMチャットはguild_idなし
+                task=task,
+                start_time=datetime.now(),
+                character_name=dm_character
+            )
+            
+            self.active_message_tasks[message.id] = task_info
+            
+            # タスク完了まで待機
+            await task
+            
+            # 成功時の統計更新
+            self.stats['total_messages_processed'] += 1
+            self.stats['dm_message_counts'] += 1
+            task_info.status = "completed"
+            
+            self.logger.info(f"DMチャット返答完了: {message.author} -> {dm_character}人格")
+            
+        except asyncio.CancelledError:
+            # タスクがキャンセルされた場合
+            if message.id in self.active_message_tasks:
+                self.active_message_tasks[message.id].status = "cancelled"
+            self.logger.info(f"DMチャットメッセージ処理がキャンセルされました: {message.id}")
+            
+        except Exception as e:
+            # エラー時の統計更新
+            self.stats['failed_messages'] += 1
+            if message.id in self.active_message_tasks:
+                self.active_message_tasks[message.id].status = "failed"
+            
+            # エラーログ
+            self.detailed_logger.log_error_detail(
+                error=e,
+                context="DMチャットメッセージ処理",
+                additional_info=f"ユーザー: {message.author.display_name}"
+            )
+            
+            try:
+                await message.reply("申し訳ございません。エラーが発生しました。")
             except:
                 pass
     
@@ -806,6 +911,7 @@ class UniversalDiscordAI(commands.Bot):
 • 現在の同時処理数: {current_concurrent}
 • 処理中タスク: {len(processing_tasks)}
 • 総処理メッセージ数: {self.stats['total_messages_processed']}
+• DMチャット処理数: {self.stats['dm_message_counts']}
 • 平均応答時間: {self.stats['average_response_time']:.2f}秒
 • ピーク同時処理数: {self.stats['concurrent_messages_peak']}
 • 失敗メッセージ数: {self.stats['failed_messages']}
