@@ -6,8 +6,7 @@
     "status_check_command": "!status"
   },
   "bot_settings": {
-    "continuous_conversation_enabled": true,
-    "continuous_conversation_trigger_enabled": false,
+    "continuous_conversation_enabled": false,
     "max_concurrent_messages": 20,
     "max_concurrent_per_channel": 5,
     "message_timeout_seconds": 600,
