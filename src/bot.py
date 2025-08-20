@@ -440,8 +440,9 @@ class UniversalDiscordAI(commands.Bot):
             except Exception as e:
                 self.logger.debug(f"連続会話（直前BOT）条件評価エラー: {e}")
 
-じｘｙ        # 直前がBOTの連続会話発火条件を拡張（直前がBOTなら誰でも発火）
-        if not is_mentioned and message.guild and not has_other_mentions_in_current:
+        # 直前がBOTの連続会話発火条件（設定で有効化されている場合のみ）
+        if (not is_mentioned and message.guild and not has_other_mentions_in_current and 
+            self.config.get('bot_settings.continuous_conversation_trigger_enabled', False)):
             try:
                 async for prev in message.channel.history(limit=1, before=message):
                     # 直前のメッセージがBOT（自分）なら発火
