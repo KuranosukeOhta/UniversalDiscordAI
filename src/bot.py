@@ -1108,7 +1108,9 @@ class CharacterBot:
         # チャット履歴
         if chat_history:
             context_parts.append(f"\n# 最近のチャット履歴")
-            for item in chat_history[-20:]:  # 直近20件
+            # 取得上限（general_settings.chat_history_limit）と同じ件数をAIコンテキストにも使用
+            history_count = self.parent_bot.config.get('general_settings.chat_history_limit', 100)
+            for item in chat_history[-history_count:]:
                 # 返信先のメッセージは履歴から除外（重複を避けるため）
                 if reply_context and item['id'] == reply_context['id']:
                     continue
