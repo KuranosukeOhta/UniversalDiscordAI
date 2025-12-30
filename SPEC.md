@@ -1,7 +1,7 @@
 # Universal Discord AI - 仕様書
 
 ## プロジェクト概要
-Discord BOTを開発し、Docker上に構築する。サーバー上の全チャンネルを常時監視し、メンションされた場合のみOpenAI GPT-5を使用して返答するAIボット。
+Discord BOTを開発し、Docker上に構築する。サーバー上の全チャンネルを常時監視し、メンションされた場合のみOpenRouter経由でGoogle Gemini 2.5 Flash Liteを使用して返答するAIボット。
 
 ## 基本仕様
 
@@ -13,8 +13,8 @@ Discord BOTを開発し、Docker上に構築する。サーバー上の全チャ
 ### 2. 監視・返答機能
 - **監視対象**: サーバー上の全チャンネル（チャンネル・スレッド両対応）
 - **返答条件**: @でメンションされている場合のみ
-- **AI モデル**: OpenAI GPT-5
-- **コンテキスト制限**: 125K tokens
+- **AI モデル**: OpenRouter経由でGoogle Gemini 2.5 Flash Lite
+- **コンテキスト制限**: モデルの制限に従う
 
 ### 3. 返答処理
 - **ストリーミング**: 有効
@@ -27,7 +27,7 @@ Discord BOTを開発し、Docker上に構築する。サーバー上の全チャ
 - **チャット履歴**: 直近100件まで取得（設定ファイルで変更可能）
 - **取得内容**: 発言者・発言内容
 - **チャンネル情報**: チャンネル名、topic（概要説明）を取得
-- **コンテキスト制限チェック**: モデルの125K制限を超えないよう監視
+- **コンテキスト制限チェック**: モデルの制限を超えないよう監視
 - **取得タイミング**: 発言毎に毎回コンテキストを取得し直す
 
 ### 5. 人格設定機能
@@ -38,14 +38,14 @@ Discord BOTを開発し、Docker上に構築する。サーバー上の全チャ
 - **読み込み**: 実行時に複数のコンテキストファイルから選択
 
 ### 6. エラーハンドリング
-- **OpenAI API利用不可時**: チャットにエラーメッセージを送信
+- **OpenRouter API利用不可時**: チャットにエラーメッセージを送信
 - **Discord API制限時**: チャットにエラーメッセージを送信
 
 ## 技術仕様
 
 ### API認証情報
 ```
-OPENAI_API_KEY: GPT-5 API用
+OPENAI_API_KEY: OpenRouter API用（互換性のため変数名はOPENAI_API_KEY）
 DISCORD_BOT_TOKEN: Discord BOT用
 ```
 
@@ -93,7 +93,7 @@ UniversalDiscordAI/
    - チャンネル情報取得（名前・topic）
    - 直近100件のチャット履歴取得
    - コンテキスト制限チェック
-   - GPT-5にストリーミングリクエスト
+   - OpenRouter経由でGemini 2.5 Flash Liteにストリーミングリクエスト
    - レート制限を動的調整
    - 初回編集まで typing indicator維持
    - 以降はメッセージ編集で更新
@@ -110,7 +110,11 @@ UniversalDiscordAI/
   "chat_history_limit": 100,
   "context_token_limit": 125000,
   "rate_limit_adjustment": true,
-  "typing_indicator_enabled": true
+  "typing_indicator_enabled": true,
+  "openai_settings": {
+    "model": "google/gemini-2.5-flash-lite",
+    "vision_model": "google/gemini-2.5-flash-lite"
+  }
 }
 ```
 

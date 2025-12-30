@@ -34,7 +34,7 @@
     "health_check_interval": 180,
     "function_call_timeout": 30,
     "enable_parallel_processing": true,
-    "vision_model": "gpt-4o",
+    "vision_model": "google/gemini-2.5-flash-lite",
     "image_processing_enabled": true,
     "max_image_size_mb": 20,
     "supported_image_formats": ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tga"]
@@ -59,7 +59,7 @@
       "discord_connected": "Discordに接続しました",
       "discord_disconnected": "Discordから切断されました",
       "discord_reconnected": "Discordに再接続しました",
-      "openai_health_monitoring_started": "OpenAI API接続状態のヘルスモニタリングを開始しました",
+      "openai_health_monitoring_started": "OpenRouter API接続状態のヘルスモニタリングを開始しました",
       "task_cancelled": "タスクをキャンセル: {message_id}",
       "status_change_error": "ステータス変更エラー (試行 {attempt}/3): {error}",
       "connection_closed": "Discord接続が既に閉じられています",

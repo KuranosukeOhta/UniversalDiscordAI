@@ -1,10 +1,10 @@
 # Universal Discord AI
 
-GPT-5を使用したDiscord BOTプロジェクト。複数の人格を持つAIが、メンション時に自然な会話で返答します。
+OpenRouter経由でGoogle Gemini 2.5 Flash Liteを使用したDiscord BOTプロジェクト。複数の人格を持つAIが、メンション時に自然な会話で返答します。
 
 ## 🌟 特徴
 
-- **GPT-5 統合**: 最新のOpenAI GPT-5モデルを使用
+- **OpenRouter統合**: OpenRouter経由でGoogle Gemini 2.5 Flash Liteモデルを使用
 - **画像処理対応**: 添付画像を認識・分析して返答
 - **ストリーミング返答**: リアルタイムでメッセージを更新
 - **複数人格対応**: 異なる性格のBOTを並列実行
@@ -19,7 +19,7 @@ GPT-5を使用したDiscord BOTプロジェクト。複数の人格を持つAI�
 
 - Docker & Docker Compose
 - Discord Bot Token
-- OpenAI API Key (GPT-5対応)
+- OpenRouter API Key
 
 ## 🚀 セットアップ
 
@@ -41,7 +41,7 @@ cp env.example env.local
 
 ```env
 DISCORD_BOT_TOKEN=your_discord_bot_token_here
-OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_API_KEY=your_openrouter_api_key_here
 ```
 
 ### 3. Discord Bot の作成
@@ -52,11 +52,13 @@ OPENAI_API_KEY=your_openai_api_key_here
 4. TOKENをコピーして `env.local` に設定
 5. BOTをサーバーに招待（必要な権限: メッセージ送信、メッセージ履歴読み取り、メンション確認）
 
-### 4. OpenAI API Key の取得
+### 4. OpenRouter API Key の取得
 
-1. [OpenAI Platform](https://platform.openai.com/api-keys) にアクセス
-2. 新しいAPI Keyを作成
-3. KEYをコピーして `env.local` に設定
+1. [OpenRouter](https://openrouter.ai/) にアクセス
+2. アカウントを作成またはログイン
+3. API Keysセクションで新しいAPI Keyを作成
+4. KEYをコピーして `env.local` の `OPENAI_API_KEY` に設定
+   - 注: 環境変数名は `OPENAI_API_KEY` ですが、OpenRouterのAPIキーを設定してください
 
 ### 5. Docker でのビルドと実行
 
@@ -85,11 +87,11 @@ docker-compose down
     "enable_typing_indicator": true     // タイピング表示
   },
   "openai_settings": {
-    "model": "gpt-5",                   // 使用するモデル
-    "max_completion_tokens": 16000,     // 最大トークン数
-    "temperature": 1.0,                 // 創造性レベル
-    "timeout_seconds": 120,             // OpenAI APIタイムアウト（秒）
-    "function_call_timeout": 30         // ファンクションコールタイムアウト（秒）
+    "model": "google/gemini-2.5-flash-lite",  // 使用するモデル
+    "max_completion_tokens": 16000,           // 最大トークン数
+    "temperature": 1.0,                       // 創造性レベル
+    "timeout_seconds": 120,                   // APIタイムアウト（秒）
+    "function_call_timeout": 30               // ファンクションコールタイムアウト（秒）
   }
 }
 ```
@@ -119,7 +121,7 @@ AIが添付された画像を認識・分析し、画像の内容に基づいた
 ```json
 {
   "openai_settings": {
-    "vision_model": "gpt-4o",
+    "vision_model": "google/gemini-2.5-flash-lite",
     "image_processing_enabled": true,
     "max_image_size_mb": 20
   }
@@ -291,10 +293,10 @@ UniversalDiscordAI/
 - Discord BOTの権限を確認
 - ログでエラーを確認: `docker-compose logs discord-ai`
 
-**OpenAI API エラー**
+**OpenRouter API エラー**
 - API Keyが正しく設定されているか確認
-- OpenAIアカウントの利用制限を確認
-- GPT-5へのアクセス権限を確認
+- OpenRouterアカウントの利用制限を確認
+- Geminiモデルへのアクセス権限を確認
 
 **コンテキスト制限エラー**
 - `chat_history_limit` を減らす
@@ -327,5 +329,5 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 ---
 
-**Universal Discord AI** - GPT-5を使用した次世代Discord BOT
+**Universal Discord AI** - OpenRouter経由でGoogle Gemini 2.5 Flash Liteを使用した次世代Discord BOT
 

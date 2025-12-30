@@ -7,7 +7,7 @@
 - [ ] Docker がインストールされている
 - [ ] Docker Compose がインストールされている  
 - [ ] Discord Developer アカウントがある
-- [ ] OpenAI アカウントがある（GPT-5アクセス権限付き）
+- [ ] OpenRouter アカウントがある
 - [ ] 管理者権限でDiscordサーバーにアクセスできる
 
 ## 🔧 詳細セットアップ手順
@@ -58,18 +58,18 @@
 2. BOTを招待するサーバーを選択
 3. 権限を確認して「認証」をクリック
 
-### Step 2: OpenAI API の設定
+### Step 2: OpenRouter API の設定
 
-#### 2.1 OpenAI アカウントの準備
+#### 2.1 OpenRouter アカウントの準備
 
-1. [OpenAI Platform](https://platform.openai.com/) にログイン
-2. 利用制限と課金設定を確認
-3. GPT-5へのアクセス権限があることを確認
+1. [OpenRouter](https://openrouter.ai/) にアクセス
+2. アカウントを作成またはログイン
+3. 利用制限と課金設定を確認
 
 #### 2.2 API Key の作成
 
-1. [API Keys ページ](https://platform.openai.com/api-keys) にアクセス
-2. 「Create new secret key」をクリック
+1. [OpenRouter Keys ページ](https://openrouter.ai/keys) にアクセス
+2. 「Create Key」をクリック
 3. キー名を入力（例：Discord AI Bot）
 4. 生成されたキーをコピーして安全に保存
 
@@ -101,8 +101,9 @@ nano env.local
 # Discord Bot Token（Step 1.3で取得）
 DISCORD_BOT_TOKEN=MTIzNDU2Nzg5MDEyMzQ1Njc4.Xxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
-# OpenAI API Key（Step 2.2で取得）
-OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# OpenRouter API Key（Step 2.2で取得）
+# Note: 変数名はOPENAI_API_KEYですが、OpenRouterのAPIキーを設定してください
+OPENAI_API_KEY=sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Bot Configuration
 BOT_NAME=Universal Discord AI
@@ -321,14 +322,14 @@ docker-compose restart discord-ai
 3. BOTの権限を確認（メッセージ送信権限）
 4. ログでエラーを確認
 
-#### OpenAI API エラー
+#### OpenRouter API エラー
 
-**症状**: "OpenAI API エラー" メッセージが表示
+**症状**: "OpenRouter API エラー" メッセージが表示
 
 **解決方法**:
 1. API キーの有効性を確認
-2. OpenAI アカウントの利用制限を確認
-3. GPT-5 へのアクセス権限を確認
+2. OpenRouter アカウントの利用制限を確認
+3. Gemini モデルへのアクセス権限を確認
 4. ネットワーク接続を確認
 
 #### メモリ不足エラー
@@ -379,7 +380,7 @@ docker stats --no-stream
 1. **GitHub Issues**: 技術的な問題
 2. **ログファイル**: `logs/discord_ai.log` を確認
 3. **Discord Developer Portal**: BOT設定の確認
-4. **OpenAI Platform**: API使用状況の確認
+4. **OpenRouter Platform**: API使用状況の確認
 
 ---
 

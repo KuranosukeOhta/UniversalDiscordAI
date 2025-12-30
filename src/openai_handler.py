@@ -1,6 +1,6 @@
 """
-Universal Discord AI - OpenAI Handler
-OpenAI APIとの通信を管理するモジュール
+Universal Discord AI - OpenRouter Handler
+OpenRouter APIとの通信を管理するモジュール
 """
 
 import os
@@ -14,7 +14,7 @@ from utils import ConfigManager
 
 
 class OpenAIHandler:
-    """OpenAI API通信ハンドラー"""
+    """OpenRouter API通信ハンドラー（互換性のためクラス名はOpenAIHandlerを維持）"""
     
     def __init__(self, config: ConfigManager = None):
         self.api_key = os.getenv('OPENAI_API_KEY')
@@ -57,7 +57,7 @@ class OpenAIHandler:
         """ストリーミングレスポンスを生成"""
         
         if not self.api_key:
-            yield "エラー: OpenAI APIキーが設定されていません"
+            yield "エラー: OpenRouter APIキーが設定されていません"
             return
         
         # モデル名が指定されていない場合は設定ファイルから取得
@@ -130,7 +130,7 @@ class OpenAIHandler:
             request_data["temperature"] = temperature
         
         # リクエストデータの詳細をログ出力
-        self.logger.info(f"🚀 OpenAI APIリクエスト構造:")
+        self.logger.info(f"🚀 OpenRouter APIリクエスト構造:")
         self.logger.info(f"  - モデル: {model}")
         self.logger.info(f"  - 最大トークン数: {max_completion_tokens}")
         self.logger.info(f"  - ストリーミング: {request_data.get('stream', False)}")
@@ -171,10 +171,10 @@ class OpenAIHandler:
                             response_time = asyncio.get_event_loop().time() - start_time
                             
                             # エラーの詳細ログ
-                            self.logger.error(f"OpenAI API エラー ({response.status}): {error_text}")
+                            self.logger.error(f"OpenRouter API エラー ({response.status}): {error_text}")
                             self.logger.error(f"エラー詳細 - レスポンス時間: {response_time:.2f}秒, リトライ回数: {retry_count}")
                             
-                            yield f"エラー: OpenAI API呼び出しに失敗しました (HTTP {response.status})"
+                            yield f"エラー: OpenRouter API呼び出しに失敗しました (HTTP {response.status})"
                             return
                             
                         # ストリーミングレスポンスを処理
@@ -188,20 +188,20 @@ class OpenAIHandler:
                         
             except asyncio.TimeoutError:
                 response_time = asyncio.get_event_loop().time() - start_time
-                self.logger.error(f"OpenAI API タイムアウト (設定: {self.timeout.total}秒, 実際: {response_time:.2f}秒)")
+                self.logger.error(f"OpenRouter API タイムアウト (設定: {self.timeout.total}秒, 実際: {response_time:.2f}秒)")
                 self.logger.error(f"タイムアウト詳細 - モデル: {model}, 最大トークン: {max_completion_tokens}, コンテキスト長: {len(context)}文字")
                 if image_attachments:
                     self.logger.error(f"画像添付: {len(image_attachments)}個")
                 self._update_connection_status(success=False, error_type="timeout")
                 retry_count += 1
                 if retry_count >= self.max_retries:
-                    yield f"エラー: OpenAI APIがタイムアウトしました (設定: {self.timeout.total}秒)"
+                    yield f"エラー: OpenRouter APIがタイムアウトしました (設定: {self.timeout.total}秒)"
                     return
                 await asyncio.sleep(self.retry_delay * retry_count)
                 
             except Exception as e:
                 # エラーの詳細情報をログ出力
-                self.logger.error(f"❌ OpenAI API 呼び出しエラー: {type(e).__name__}: {str(e)}")
+                self.logger.error(f"❌ OpenRouter API 呼び出しエラー: {type(e).__name__}: {str(e)}")
                 self.logger.error(f"📋 エラー詳細: {e}")
                 
                 # エラーのトレースバック情報も含める
@@ -212,7 +212,7 @@ class OpenAIHandler:
                 self._update_connection_status(success=False, error_type="exception", error=str(e))
                 retry_count += 1
                 if retry_count >= self.max_retries:
-                    yield f"エラー: OpenAI API呼び出し中に問題が発生しました: {type(e).__name__}: {str(e)}"
+                    yield f"エラー: OpenRouter API呼び出し中に問題が発生しました: {type(e).__name__}: {str(e)}"
                     return
                 await asyncio.sleep(self.retry_delay * retry_count)
                 
@@ -311,7 +311,7 @@ class OpenAIHandler:
         if not self.api_key:
             return {
                 "success": False,
-                "error": "OpenAI APIキーが設定されていません"
+                "error": "OpenRouter APIキーが設定されていません"
             }
         
         # モデル名が指定されていない場合は設定ファイルから取得
@@ -380,7 +380,7 @@ class OpenAIHandler:
             request_data["temperature"] = temperature
         
         # ファンクションコール用リクエストデータの詳細をログ出力
-        self.logger.info(f"🚀 ファンクションコール用OpenAI APIリクエスト構造:")
+        self.logger.info(f"🚀 ファンクションコール用OpenRouter APIリクエスト構造:")
         self.logger.info(f"  - モデル: {model}")
         self.logger.info(f"  - 最大トークン数: {max_completion_tokens}")
         self.logger.info(f"  - ストリーミング: {request_data.get('stream', False)}")
@@ -423,7 +423,7 @@ class OpenAIHandler:
                         self.logger.error(f"エラー詳細: {error_text}")
                         return {
                             "success": False,
-                            "error": f"OpenAI API エラー - HTTP {response.status}: {error_text}"
+                            "error": f"OpenRouter API エラー - HTTP {response.status}: {error_text}"
                         }
                         
         except asyncio.TimeoutError:
@@ -473,13 +473,13 @@ class OpenAIHandler:
             self.logger.error(f"レート制限処理エラー: {e}")
             
     async def test_connection_fast(self) -> bool:
-        """OpenAI APIへの軽量接続テスト（高速チェック用）"""
+        """OpenRouter APIへの軽量接続テスト（高速チェック用）"""
         if not self.api_key:
-            self.logger.error("OpenAI APIキーが設定されていません")
+            self.logger.error("OpenRouter APIキーが設定されていません")
             return False
             
         try:
-            self.logger.debug("OpenAI API軽量接続テストを開始...")
+            self.logger.debug("OpenRouter API軽量接続テストを開始...")
             
             # 短いタイムアウトで軽量なテストを実行
             fast_timeout = aiohttp.ClientTimeout(total=5)  # 5秒に短縮
@@ -507,31 +507,31 @@ class OpenAIHandler:
                 ) as response:
                     
                     if response.status == 200:
-                        self.logger.info("OpenAI API軽量接続テスト成功")
+                        self.logger.info("OpenRouter API軽量接続テスト成功")
                         return True
                     else:
                         error_text = await response.text()
-                        self.logger.error(f"OpenAI API軽量接続テスト失敗 - HTTP {response.status}: {error_text}")
+                        self.logger.error(f"OpenRouter API軽量接続テスト失敗 - HTTP {response.status}: {error_text}")
                         return False
                         
         except asyncio.TimeoutError:
-            self.logger.error("OpenAI API軽量接続テストがタイムアウトしました")
+            self.logger.error("OpenRouter API軽量接続テストがタイムアウトしました")
             return False
         except aiohttp.ClientError as e:
-            self.logger.error(f"OpenAI API軽量接続テストでネットワークエラー: {e}")
+            self.logger.error(f"OpenRouter API軽量接続テストでネットワークエラー: {e}")
             return False
         except Exception as e:
-            self.logger.error(f"OpenAI API軽量接続テストで予期しないエラー: {e}")
+            self.logger.error(f"OpenRouter API軽量接続テストで予期しないエラー: {e}")
             return False
 
     async def test_connection(self) -> bool:
-        """OpenAI APIへの接続をテスト（従来版、詳細なテスト）"""
+        """OpenRouter APIへの接続をテスト（従来版、詳細なテスト）"""
         if not self.api_key:
-            self.logger.error("OpenAI APIキーが設定されていません")
+            self.logger.error("OpenRouter APIキーが設定されていません")
             return False
             
         try:
-            self.logger.debug("OpenAI API接続テストを開始...")
+            self.logger.debug("OpenRouter API接続テストを開始...")
             
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
                 headers = {
@@ -556,21 +556,21 @@ class OpenAIHandler:
                 ) as response:
                     
                     if response.status == 200:
-                        self.logger.info("OpenAI API接続テスト成功")
+                        self.logger.info("OpenRouter API接続テスト成功")
                         return True
                     else:
                         error_text = await response.text()
-                        self.logger.error(f"OpenAI API接続テスト失敗 - HTTP {response.status}: {error_text}")
+                        self.logger.error(f"OpenRouter API接続テスト失敗 - HTTP {response.status}: {error_text}")
                         return False
                         
         except asyncio.TimeoutError:
-            self.logger.error("OpenAI API接続テストがタイムアウトしました")
+            self.logger.error("OpenRouter API接続テストがタイムアウトしました")
             return False
         except aiohttp.ClientError as e:
-            self.logger.error(f"OpenAI API接続テストでネットワークエラー: {e}")
+            self.logger.error(f"OpenRouter API接続テストでネットワークエラー: {e}")
             return False
         except Exception as e:
-            self.logger.error(f"OpenAI API接続テストで予期しないエラー: {e}")
+            self.logger.error(f"OpenRouter API接続テストで予期しないエラー: {e}")
             self.logger.error(f"エラータイプ: {type(e).__name__}")
             return False
             
@@ -584,7 +584,7 @@ class OpenAIHandler:
         
     async def estimate_tokens(self, text: str) -> int:
         """テキストのトークン数を推定（簡易版）"""
-        # GPT-5の正確なトークナイザーがない場合の近似計算
+        # 正確なトークナイザーがない場合の近似計算
         # 日本語: 約1文字 = 1.5トークン
         # 英語: 約4文字 = 1トークン
         
@@ -602,38 +602,38 @@ class OpenAIHandler:
             self.connection_status = "healthy"
             self.last_successful_call = time.time()
             self.consecutive_failures = 0
-            self.logger.debug("OpenAI API接続状態: 正常")
+            self.logger.debug("OpenRouter API接続状態: 正常")
         else:
             self.consecutive_failures += 1
-            self.logger.warning(f"OpenAI API接続失敗: {error_type} (連続失敗: {self.consecutive_failures})")
+            self.logger.warning(f"OpenRouter API接続失敗: {error_type} (連続失敗: {self.consecutive_failures})")
             
             if self.consecutive_failures >= self.max_consecutive_failures:
                 self.connection_status = "failed"
-                self.logger.error(f"OpenAI API接続状態: 失敗 (連続{self.consecutive_failures}回)")
+                self.logger.error(f"OpenRouter API接続状態: 失敗 (連続{self.consecutive_failures}回)")
             elif self.consecutive_failures >= 3:
                 self.connection_status = "degraded"
-                self.logger.warning(f"OpenAI API接続状態: 不安定 (連続失敗: {self.consecutive_failures}回)")
+                self.logger.warning(f"OpenRouter API接続状態: 不安定 (連続失敗: {self.consecutive_failures}回)")
     
     async def _check_connection_health_fast(self) -> bool:
         """高速な接続状態チェック（初回メッセージ送信の遅延を防ぐ）"""
         if self.connection_status == "healthy":
-            self.logger.debug("OpenAI API接続状態: 正常（高速チェック）")
+            self.logger.debug("OpenRouter API接続状態: 正常（高速チェック）")
             return True
         
         if self.connection_status == "failed":
             # 失敗状態の場合は即座にFalseを返す（自動復元は行わない）
-            self.logger.warning("OpenAI API接続状態: 失敗（高速チェック）")
+            self.logger.warning("OpenRouter API接続状態: 失敗（高速チェック）")
             return False
         
         # 不安定状態の場合は短時間待機
         if self.connection_status == "degraded":
-            self.logger.warning("OpenAI API接続状態: 不安定（高速チェック）")
+            self.logger.warning("OpenRouter API接続状態: 不安定（高速チェック）")
             await asyncio.sleep(1)  # 5秒から1秒に短縮
             return True
         
         # 不明な状態の場合は軽量な接続テストを実行
         if self.connection_status == "unknown":
-            self.logger.info("OpenAI API接続状態: 不明 - 軽量接続テストを実行（高速チェック）")
+            self.logger.info("OpenRouter API接続状態: 不明 - 軽量接続テストを実行（高速チェック）")
             return await self._attempt_recovery_fast()
         
         return False
@@ -641,31 +641,31 @@ class OpenAIHandler:
     async def _check_connection_health(self) -> bool:
         """接続状態の健全性をチェック（従来版、詳細な復元処理）"""
         if self.connection_status == "healthy":
-            self.logger.debug("OpenAI API接続状態: 正常")
+            self.logger.debug("OpenRouter API接続状態: 正常")
             return True
         
         if self.connection_status == "failed":
             # 失敗状態の場合、自動復元を試行
             if self.auto_recovery_enabled:
-                self.logger.warning("OpenAI API接続状態: 失敗 - 自動復元を試行中...")
+                self.logger.warning("OpenRouter API接続状態: 失敗 - 自動復元を試行中...")
                 if await self._attempt_recovery():
-                    self.logger.info("OpenAI API接続の自動復元に成功しました")
+                    self.logger.info("OpenRouter API接続の自動復元に成功しました")
                     return True
                 else:
-                    self.logger.error("OpenAI API接続の自動復元に失敗しました")
+                    self.logger.error("OpenRouter API接続の自動復元に失敗しました")
             else:
-                self.logger.error("OpenAI API接続状態: 失敗 - 自動復元が無効です")
+                self.logger.error("OpenRouter API接続状態: 失敗 - 自動復元が無効です")
             return False
         
         # 不安定状態の場合は、短時間待機してから再試行
         if self.connection_status == "degraded":
-            self.logger.warning("OpenAI API接続状態: 不安定 - 短時間待機してから再試行します")
+            self.logger.warning("OpenRouter API接続状態: 不安定 - 短時間待機してから再試行します")
             await asyncio.sleep(5)
             return True
         
         # 不明な状態の場合
         if self.connection_status == "unknown":
-            self.logger.info("OpenAI API接続状態: 不明 - 初回接続テストを実行します")
+            self.logger.info("OpenRouter API接続状態: 不明 - 初回接続テストを実行します")
             if await self._attempt_recovery():
                 return True
         
@@ -674,45 +674,45 @@ class OpenAIHandler:
     async def _attempt_recovery_fast(self) -> bool:
         """軽量な接続復元を試行（高速チェック用）"""
         try:
-            self.logger.info("OpenAI API軽量接続テストを実行中...")
+            self.logger.info("OpenRouter API軽量接続テストを実行中...")
             
             # 軽量な接続テストを実行（短いタイムアウト）
             if await self.test_connection_fast():
                 self.connection_status = "healthy"
                 self.consecutive_failures = 0
-                self.logger.info("OpenAI API接続の軽量復元に成功しました")
+                self.logger.info("OpenRouter API接続の軽量復元に成功しました")
                 return True
             else:
-                self.logger.warning("OpenAI API軽量接続テストに失敗しました")
+                self.logger.warning("OpenRouter API軽量接続テストに失敗しました")
                 return False
                 
         except asyncio.TimeoutError:
-            self.logger.error("OpenAI API軽量接続テストがタイムアウトしました")
+            self.logger.error("OpenRouter API軽量接続テストがタイムアウトしました")
             return False
         except Exception as e:
-            self.logger.error(f"OpenAI API接続の軽量復元中にエラー: {e}")
+            self.logger.error(f"OpenRouter API接続の軽量復元中にエラー: {e}")
             return False
 
     async def _attempt_recovery(self) -> bool:
         """接続の自動復元を試行（従来版、詳細な復元処理）"""
         try:
-            self.logger.info("OpenAI API接続テストを実行中...")
+            self.logger.info("OpenRouter API接続テストを実行中...")
             
             # 接続テストを実行
             if await self.test_connection():
                 self.connection_status = "healthy"
                 self.consecutive_failures = 0
-                self.logger.info("OpenAI API接続の自動復元に成功しました")
+                self.logger.info("OpenRouter API接続の自動復元に成功しました")
                 return True
             else:
-                self.logger.warning("OpenAI API接続テストに失敗しました")
+                self.logger.warning("OpenRouter API接続テストに失敗しました")
                 return False
                 
         except asyncio.TimeoutError:
-            self.logger.error("OpenAI API接続テストがタイムアウトしました")
+            self.logger.error("OpenRouter API接続テストがタイムアウトしました")
             return False
         except Exception as e:
-            self.logger.error(f"OpenAI API接続の自動復元中にエラー: {e}")
+            self.logger.error(f"OpenRouter API接続の自動復元中にエラー: {e}")
             self.logger.error(f"エラータイプ: {type(e).__name__}")
             self.logger.error(f"エラー詳細: {str(e)}")
             return False
@@ -843,7 +843,7 @@ class OpenAIHandler:
         if not self.auto_recovery_enabled:
             return
         
-        self.logger.info("OpenAI API接続状態の継続監視を開始しました")
+        self.logger.info("OpenRouter API接続状態の継続監視を開始しました")
         
         while True:
             try:
@@ -855,7 +855,7 @@ class OpenAIHandler:
                     await self._attempt_recovery()
                     
             except asyncio.CancelledError:
-                self.logger.info("OpenAI API接続状態監視を停止しました")
+                self.logger.info("OpenRouter API接続状態監視を停止しました")
                 break
             except Exception as e:
                 self.logger.error(f"接続状態監視中にエラー: {e}")
