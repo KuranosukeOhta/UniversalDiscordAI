@@ -456,17 +456,26 @@ class UniversalDiscordAI(commands.Bot):
                 
     async def get_channel_info(self, channel) -> Dict:
         """チャンネル情報を取得"""
-        info = {
-            'name': channel.name,
-            'type': str(channel.type),
-            'topic': getattr(channel, 'topic', None) or '設定されていません',
-            'id': channel.id
-        }
-        
-        # スレッドの場合は親チャンネル情報も取得
-        if isinstance(channel, discord.Thread):
-            info['parent_channel'] = channel.parent.name
-            info['thread_starter'] = channel.owner.display_name if channel.owner else '不明'
+        # DMチャンネルの場合
+        if isinstance(channel, discord.DMChannel):
+            info = {
+                'name': f"DM with {channel.recipient.display_name}",
+                'type': 'private',
+                'topic': 'ダイレクトメッセージ',
+                'id': channel.id
+            }
+        else:
+            info = {
+                'name': channel.name,
+                'type': str(channel.type),
+                'topic': getattr(channel, 'topic', None) or '設定されていません',
+                'id': channel.id
+            }
+            
+            # スレッドの場合は親チャンネル情報も取得
+            if isinstance(channel, discord.Thread):
+                info['parent_channel'] = channel.parent.name
+                info['thread_starter'] = channel.owner.display_name if channel.owner else '不明'
             
         return info
         
