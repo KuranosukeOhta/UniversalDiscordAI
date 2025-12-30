@@ -17,7 +17,8 @@ class OpenAIHandler:
     """OpenRouter API通信ハンドラー（互換性のためクラス名はOpenAIHandlerを維持）"""
     
     def __init__(self, config: ConfigManager = None):
-        self.api_key = os.getenv('OPENAI_API_KEY')
+        # OpenRouterを使用する場合はOPENROUTER_API_KEYを優先、なければOPENAI_API_KEYを使用
+        self.api_key = os.getenv('OPENROUTER_API_KEY') or os.getenv('OPENAI_API_KEY')
         self.base_url = "https://openrouter.ai/api/v1"
         self.logger = logging.getLogger(__name__)
         
@@ -42,7 +43,7 @@ class OpenAIHandler:
         self.auto_recovery_enabled = True
         
         if not self.api_key:
-            self.logger.error("OPENAI_API_KEY が設定されていません")
+            self.logger.error("OPENROUTER_API_KEY または OPENAI_API_KEY が設定されていません")
             
     async def generate_streaming_response(
         self, 
