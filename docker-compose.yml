@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   discord-ai:
     build:
@@ -17,7 +15,9 @@ services:
       - ./config:/app/config:ro
       - ./characters:/app/characters:ro
       - ./logs:/app/logs:rw
-      - ./env.local:/app/.env:ro
+      # env.local is loaded via env_file above, so volume mount is optional
+      # Uncomment the line below if you need to mount env.local as .env file
+      # - ./env.local:/app/.env:ro
     
     # Network configuration
     networks:
