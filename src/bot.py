@@ -214,7 +214,7 @@ class UniversalDiscordAI(commands.Bot):
                     # サーバー/チャンネル別統計
                     if message.guild:
                         server_name = message.guild.name
-                        channel_name = message.channel.name
+                        channel_name = getattr(message.channel, 'name', 'DM')
                         if server_name not in self.stats['server_message_counts']:
                             self.stats['server_message_counts'][server_name] = 0
                         self.stats['server_message_counts'][server_name] += 1
@@ -467,7 +467,7 @@ class UniversalDiscordAI(commands.Bot):
         if message.guild:
             self.detailed_logger.log_mention_detection(
                 server_name=message.guild.name,
-                channel_name=message.channel.name,
+                channel_name=getattr(message.channel, 'name', 'DM'),
                 user_name=message.author.display_name,
                 mention_type=mention_type,
                 message_content=message.content
@@ -667,7 +667,7 @@ class UniversalDiscordAI(commands.Bot):
                     available_characters = list(self.character_bots.keys())
                     self.detailed_logger.log_character_selection(
                         server_name=message.guild.name,
-                        channel_name=message.channel.name,
+                        channel_name=getattr(message.channel, 'name', 'DM'),
                         selected_character=character_name,
                         available_characters=available_characters
                     )
@@ -699,9 +699,10 @@ class UniversalDiscordAI(commands.Bot):
             # エラー時の詳細ログ
             response_time = asyncio.get_event_loop().time() - start_time
             if message.guild:
+                channel_display = getattr(message.channel, 'name', 'DM')
                 self.detailed_logger.log_error_detail(
                     error=e,
-                    context=f"返答生成 - サーバー: {message.guild.name}, チャンネル: #{message.channel.name}",
+                    context=f"返答生成 - サーバー: {message.guild.name}, チャンネル: #{channel_display}",
                     additional_info=f"ユーザー: {message.author.display_name}, キャラクター: {character_name}, レスポンス時間: {response_time:.2f}秒"
                 )
             else:
@@ -990,6 +991,22 @@ class CharacterBot:
         self.character_data = character_data
         self.parent_bot = parent_bot
         self.logger = logging.getLogger(f"CharacterBot.{character_name}")
+    
+    def _get_safe_channel_name(self, channel) -> str:
+        """チャンネル名を安全に取得"""
+        if isinstance(channel, discord.DMChannel):
+            return "DM"
+        elif isinstance(channel, discord.GroupChannel):
+            return "GroupDM"
+        elif hasattr(channel, 'name'):
+            return channel.name
+        return "Unknown"
+    
+    def _get_safe_user_name(self, user) -> str:
+        """ユーザー名を安全に取得"""
+        if not user:
+            return "Unknown User"
+        return getattr(user, 'display_name', 'Unknown User')
         
     async def generate_response(self, message: discord.Message, channel_info: Dict, chat_history: List[Dict], image_attachments: List[Dict] = None):
         """返答を生成して送信（非同期最適化版）"""
@@ -1027,7 +1044,8 @@ class CharacterBot:
             self.logger.info(f"ファンクションコール機能チェック - 有効: {use_function_calls}, 利用可能関数数: {len(function_definitions)}")
             
             # 統合されたレスポンス生成を実行
-            self.logger.info(f"🚀 統合レスポンス生成を開始 - ユーザー: {message.author.display_name}, チャンネル: #{message.channel.name}")
+            channel_display = getattr(message.channel, 'name', 'DM')
+            self.logger.info(f"🚀 統合レスポンス生成を開始 - ユーザー: {message.author.display_name}, チャンネル: #{channel_display}")
             response_message, full_response = await self._generate_unified_response(
                 message, context, channel_info, chat_history, reply_context, image_attachments
             )
@@ -1076,9 +1094,10 @@ class CharacterBot:
                     response_message.id is not None
                 )
                 
+                channel_display = getattr(message.channel, 'name', 'DM')
                 self.parent_bot.detailed_logger.log_message_generation(
                     server_name=message.guild.name,
-                    channel_name=message.channel.name,
+                    channel_name=channel_display,
                     user_name=message.author.display_name,
                     character_name=self.character_name,
                     response_time=response_time,
@@ -1093,9 +1112,10 @@ class CharacterBot:
             # エラー時の詳細ログ
             response_time = asyncio.get_event_loop().time() - start_time
             if message.guild:
+                channel_display = getattr(message.channel, 'name', 'DM')
                 self.parent_bot.detailed_logger.log_error_detail(
                     error=e,
-                    context=f"返答生成 - サーバー: {message.guild.name}, チャンネル: #{message.channel.name}",
+                    context=f"返答生成 - サーバー: {message.guild.name}, チャンネル: #{channel_display}",
                     additional_info=f"ユーザー: {message.author.display_name}, キャラクター: {self.character_name}, レスポンス時間: {response_time:.2f}秒"
                 )
             else:

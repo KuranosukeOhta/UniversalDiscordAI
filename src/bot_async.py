@@ -277,7 +277,7 @@ class UniversalDiscordAI(commands.Bot):
         if message.guild:
             self.detailed_logger.log_mention_detection(
                 server_name=message.guild.name,
-                channel_name=message.channel.name,
+                channel_name=getattr(message.channel, 'name', 'DM'),
                 user_name=message.author.display_name,
                 mention_type=mention_type,
                 message_content=message.content
@@ -308,7 +308,7 @@ class UniversalDiscordAI(commands.Bot):
                 # 統計情報を更新
                 if message.guild:
                     server_name = message.guild.name
-                    channel_name = message.channel.name
+                    channel_name = getattr(message.channel, 'name', 'DM')
                     
                     # サーバー別メッセージ数
                     if server_name not in self.stats['server_message_counts']:
@@ -367,9 +367,10 @@ class UniversalDiscordAI(commands.Bot):
                 
                 # エラーログ
                 if message.guild:
+                    channel_display = getattr(message.channel, 'name', 'DM')
                     self.detailed_logger.log_error_detail(
                         error=e,
-                        context=f"メンション処理 - サーバー: {message.guild.name}, チャンネル: #{message.channel.name}",
+                        context=f"メンション処理 - サーバー: {message.guild.name}, チャンネル: #{channel_display}",
                         additional_info=f"ユーザー: {message.author.display_name}"
                     )
                 else:
@@ -406,7 +407,7 @@ class UniversalDiscordAI(commands.Bot):
                     available_characters = list(self.character_bots.keys())
                     self.detailed_logger.log_character_selection(
                         server_name=message.guild.name,
-                        channel_name=message.channel.name,
+                        channel_name=getattr(message.channel, 'name', 'DM'),
                         selected_character=character_name,
                         available_characters=available_characters
                     )
@@ -437,9 +438,10 @@ class UniversalDiscordAI(commands.Bot):
             # エラー時の詳細ログ
             response_time = asyncio.get_event_loop().time() - start_time
             if message.guild:
+                channel_display = getattr(message.channel, 'name', 'DM')
                 self.detailed_logger.log_error_detail(
                     error=e,
-                    context=f"返答生成 - サーバー: {message.guild.name}, チャンネル: #{message.channel.name}",
+                    context=f"返答生成 - サーバー: {message.guild.name}, チャンネル: #{channel_display}",
                     additional_info=f"ユーザー: {message.author.display_name}, キャラクター: {character_name}, レスポンス時間: {response_time:.2f}秒"
                 )
             else:
@@ -761,9 +763,10 @@ class CharacterBot:
                 self.logger.error(f"使用量集計エラー: {agg_err}")
 
             if message.guild:
+                channel_display = getattr(message.channel, 'name', 'DM')
                 self.parent_bot.detailed_logger.log_message_generation(
                     server_name=message.guild.name,
-                    channel_name=message.channel.name,
+                    channel_name=channel_display,
                     user_name=message.author.display_name,
                     character_name=self.character_name,
                     response_time=response_time,
@@ -778,9 +781,10 @@ class CharacterBot:
             # エラー時の詳細ログ
             response_time = asyncio.get_event_loop().time() - start_time
             if message.guild:
+                channel_display = getattr(message.channel, 'name', 'DM')
                 self.parent_bot.detailed_logger.log_error_detail(
                     error=e,
-                    context=f"返答生成 - サーバー: {message.guild.name}, チャンネル: #{message.channel.name}",
+                    context=f"返答生成 - サーバー: {message.guild.name}, チャンネル: #{channel_display}",
                     additional_info=f"ユーザー: {message.author.display_name}, キャラクター: {self.character_name}, レスポンス時間: {response_time:.2f}秒"
                 )
             else:
