@@ -64,8 +64,26 @@ class FunctionCallHandler:
     async def execute_function_call(self, function_name: str, arguments: Dict, message: discord.Message) -> Dict:
         """ファンクションコールを実行"""
         self.logger.info(f"🔧 ファンクションコール実行開始: {function_name}")
-        self.logger.info(f"👤 実行ユーザー: {message.author.display_name} (ID: {message.author.id})")
-        self.logger.info(f"📍 チャンネル: #{message.channel.name} (ID: {message.channel.id})")
+        
+        # 安全にユーザー情報を取得
+        user_name = "Unknown User"
+        user_id = "Unknown"
+        if message.author:
+            user_name = getattr(message.author, 'display_name', 'Unknown User')
+            user_id = str(message.author.id) if hasattr(message.author, 'id') else "Unknown"
+        
+        # 安全にチャンネル情報を取得
+        channel_name = "Unknown Channel"
+        channel_id = "Unknown"
+        if message.channel:
+            if isinstance(message.channel, discord.DMChannel):
+                channel_name = "DM"
+            elif hasattr(message.channel, 'name'):
+                channel_name = message.channel.name
+            channel_id = str(message.channel.id) if hasattr(message.channel, 'id') else "Unknown"
+        
+        self.logger.info(f"👤 実行ユーザー: {user_name} (ID: {user_id})")
+        self.logger.info(f"📍 チャンネル: #{channel_name} (ID: {channel_id})")
         self.logger.info(f"📋 引数: {arguments}")
         
         if not self.enabled:
@@ -82,7 +100,10 @@ class FunctionCallHandler:
             self.logger.info(f"🔐 管理者権限チェック結果: {has_permission}")
             
             if not has_permission:
-                self.logger.warning(f"❌ 管理者権限が不足: {message.author.display_name}")
+                user_name = "Unknown User"
+                if message.author:
+                    user_name = getattr(message.author, 'display_name', 'Unknown User')
+                self.logger.warning(f"❌ 管理者権限が不足: {user_name}")
                 return {
                     "success": False,
                     "error": "管理者権限が必要です"
@@ -116,8 +137,12 @@ class FunctionCallHandler:
                 }
             
             # ログ出力
+            user_name = "Unknown User"
+            if message.author:
+                user_name = getattr(message.author, 'display_name', 'Unknown User')
+            
             if result["success"]:
-                self.logger.info(f"✅ ファンクションコール成功: {function_name} - {message.author.display_name}")
+                self.logger.info(f"✅ ファンクションコール成功: {function_name} - {user_name}")
             else:
                 self.logger.error(f"❌ ファンクションコール失敗: {function_name} - {result['error']}")
             
@@ -161,7 +186,14 @@ class FunctionCallHandler:
             
             self.logger.info(f"📝 会話名変更開始 - 新しい名前: {new_name}")
             self.logger.info(f"🔍 メッセージチャンネルの詳細情報:")
-            self.logger.info(f"  - チャンネル名: {message.channel.name}")
+            
+            channel_name = "Unknown Channel"
+            if isinstance(message.channel, discord.DMChannel):
+                channel_name = "DM"
+            elif hasattr(message.channel, 'name'):
+                channel_name = message.channel.name
+            
+            self.logger.info(f"  - チャンネル名: {channel_name}")
             self.logger.info(f"  - チャンネルID: {message.channel.id}")
             self.logger.info(f"  - チャンネルタイプ: {type(message.channel)}")
             self.logger.info(f"  - チャンネルクラス名: {message.channel.__class__.__name__}")

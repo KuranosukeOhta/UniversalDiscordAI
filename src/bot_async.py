@@ -458,15 +458,27 @@ class UniversalDiscordAI(commands.Bot):
         """チャンネル情報を取得"""
         # DMチャンネルの場合
         if isinstance(channel, discord.DMChannel):
+            recipient_name = "Unknown User"
+            if channel.recipient:
+                recipient_name = channel.recipient.display_name
             info = {
-                'name': f"DM with {channel.recipient.display_name}",
+                'name': f"DM with {recipient_name}",
                 'type': 'private',
                 'topic': 'ダイレクトメッセージ',
                 'id': channel.id
             }
-        else:
+        # グループDMチャンネルの場合
+        elif isinstance(channel, discord.GroupChannel):
             info = {
-                'name': channel.name,
+                'name': channel.name if channel.name else f"Group DM ({len(channel.recipients)} members)",
+                'type': 'group',
+                'topic': 'グループダイレクトメッセージ',
+                'id': channel.id
+            }
+        else:
+            # 通常のチャンネル/スレッドの処理
+            info = {
+                'name': getattr(channel, 'name', 'Unknown Channel'),
                 'type': str(channel.type),
                 'topic': getattr(channel, 'topic', None) or '設定されていません',
                 'id': channel.id
@@ -474,8 +486,10 @@ class UniversalDiscordAI(commands.Bot):
             
             # スレッドの場合は親チャンネル情報も取得
             if isinstance(channel, discord.Thread):
-                info['parent_channel'] = channel.parent.name
-                info['thread_starter'] = channel.owner.display_name if channel.owner else '不明'
+                parent_name = getattr(channel.parent, 'name', 'Unknown') if channel.parent else 'Unknown'
+                owner_name = channel.owner.display_name if channel.owner else '不明'
+                info['parent_channel'] = parent_name
+                info['thread_starter'] = owner_name
             
         return info
         
@@ -487,14 +501,19 @@ class UniversalDiscordAI(commands.Bot):
         try:
             async for message in channel.history(limit=history_limit):
                 # BOTメッセージは履歴から除外
-                if message.author.bot:
+                if not message.author or message.author.bot:
                     continue
                     
+                # 安全にdisplay_nameを取得
+                author_name = "Unknown User"
+                if message.author:
+                    author_name = getattr(message.author, 'display_name', 'Unknown User')
+                
                 history_item = {
-                    'author': message.author.display_name,
-                    'content': message.content,
+                    'author': author_name,
+                    'content': message.content or "",
                     'timestamp': message.created_at.isoformat(),
-                    'attachments': len(message.attachments) > 0,
+                    'attachments': len(message.attachments) > 0 if message.attachments else False,
                     'id': message.id,
                     'is_reply': message.reference is not None
                 }
@@ -517,19 +536,32 @@ class UniversalDiscordAI(commands.Bot):
             # 返信先のメッセージを取得
             referenced_message = await message.channel.fetch_message(message.reference.message_id)
             
-            if referenced_message:
-                # 返信先のメッセージがBOTの場合は除外
-                if referenced_message.author.bot:
-                    self.logger.debug(f"返信先メッセージはBOTのため除外: {referenced_message.author}")
-                    return None
-                    
-                return {
-                    'author': referenced_message.author.display_name,
-                    'content': referenced_message.content,
-                    'timestamp': referenced_message.created_at.isoformat(),
-                    'attachments': len(referenced_message.attachments) > 0,
-                    'id': referenced_message.id
-                }
+            if not referenced_message:
+                return None
+            
+            # 返信先のメッセージがBOTの場合は除外
+            if referenced_message.author and referenced_message.author.bot:
+                self.logger.debug(f"返信先メッセージはBOTのため除外: {referenced_message.author}")
+                return None
+            
+            # 安全にauthorの情報を取得
+            author_name = "Unknown User"
+            if referenced_message.author:
+                author_name = getattr(referenced_message.author, 'display_name', 'Unknown User')
+                
+            return {
+                'author': author_name,
+                'content': referenced_message.content or "",
+                'timestamp': referenced_message.created_at.isoformat() if referenced_message.created_at else "",
+                'attachments': len(referenced_message.attachments) > 0 if referenced_message.attachments else False,
+                'id': referenced_message.id
+            }
+        except discord.NotFound:
+            self.logger.warning("返信先のメッセージが見つかりません")
+            return None
+        except Exception as e:
+            self.logger.error(f"返信コンテキスト取得エラー: {e}")
+            return None
         except discord.NotFound:
             self.logger.warning(f"返信先メッセージが見つかりません: {message.reference.message_id}")
         except discord.Forbidden:
