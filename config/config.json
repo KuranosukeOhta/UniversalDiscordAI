@@ -1,6 +1,6 @@
 {
   "discord_settings": {
-    "status": "みんなの会話",
+    "status": "みんなの会話に参加中",
     "admin_commands_enabled": true,
     "command_prefix": "!ai",
     "status_check_command": "!status"
@@ -26,7 +26,7 @@
     "enable_typing_indicator": true
   },
   "openai_settings": {
-    "model": "gpt-5",
+    "model": "google/gemini-2.5-flash-lite",
     "max_completion_tokens": 16000,
     "temperature": 1.0,
     "timeout_seconds": 120,

@@ -656,7 +656,8 @@ class CharacterBot:
             
             async for chunk in self.parent_bot.openai_handler.generate_streaming_response(
                 context=context,
-                character_data=self.character_data
+                character_data=self.character_data,
+                model=self.parent_bot.config.get('openai_settings.model', 'google/gemini-2.5-flash-lite')
             ):
                 full_response += chunk
                 

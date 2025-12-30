@@ -18,7 +18,7 @@ class OpenAIHandler:
     
     def __init__(self, config: ConfigManager = None):
         self.api_key = os.getenv('OPENAI_API_KEY')
-        self.base_url = "https://api.openai.com/v1"
+        self.base_url = "https://openrouter.ai/api/v1"
         self.logger = logging.getLogger(__name__)
         
         # 設定マネージャーを設定
@@ -48,7 +48,7 @@ class OpenAIHandler:
         self, 
         context: str, 
         character_data: Dict,
-        model: str = "gpt-5",
+        model: str = None,
         max_completion_tokens: int = 16000,  # GPT-5ではmax_completion_tokensを使用
         temperature: float = 1.0,  # GPT-5はtemperature=1のみサポート
         function_definitions: List[Dict] = None,
@@ -59,6 +59,10 @@ class OpenAIHandler:
         if not self.api_key:
             yield "エラー: OpenAI APIキーが設定されていません"
             return
+        
+        # モデル名が指定されていない場合は設定ファイルから取得
+        if model is None:
+            model = self.config.get('openai_settings.model', 'google/gemini-2.5-flash-lite')
         
         # 接続状態を事前にチェック（高速化）
         if not await self._check_connection_health_fast():
@@ -297,7 +301,7 @@ class OpenAIHandler:
         context: str, 
         character_data: Dict,
         function_definitions: List[Dict],
-        model: str = "gpt-5",
+        model: str = None,
         max_completion_tokens: int = 16000,  # GPT-5ではmax_completion_tokensを使用
         temperature: float = 1.0,
         image_attachments: List[Dict] = None
@@ -309,6 +313,10 @@ class OpenAIHandler:
                 "success": False,
                 "error": "OpenAI APIキーが設定されていません"
             }
+        
+        # モデル名が指定されていない場合は設定ファイルから取得
+        if model is None:
+            model = self.config.get('openai_settings.model', 'google/gemini-2.5-flash-lite')
         
         # システムプロンプトを構築
         system_prompt = self._build_system_prompt(character_data)
@@ -482,9 +490,10 @@ class OpenAIHandler:
                     "Content-Type": "application/json"
                 }
                 
-                # 最小限のテストリクエスト（GPT-5の制限に対応）
+                # 最小限のテストリクエスト
+                model = self.config.get('openai_settings.model', 'google/gemini-2.5-flash-lite')
                 test_data = {
-                    "model": "gpt-5",
+                    "model": model,
                     "messages": [{"role": "user", "content": "Hi"}],
                     "max_completion_tokens": 10  # GPT-5ではmax_completion_tokensを使用
                 }
@@ -531,8 +540,9 @@ class OpenAIHandler:
                 }
                 
                 # シンプルなテストリクエスト
+                model = self.config.get('openai_settings.model', 'google/gemini-2.5-flash-lite')
                 test_data = {
-                    "model": "gpt-5",
+                    "model": model,
                     "messages": [{"role": "user", "content": "Hello"}],
                     "max_completion_tokens": 10  # GPT-5ではmax_completion_tokensを使用
                 }

@@ -1159,6 +1159,7 @@ class CharacterBot:
                         context=context,
                         character_data=self.character_data,
                         function_definitions=function_definitions,
+                        model=self.parent_bot.config.get('openai_settings.model', 'google/gemini-2.5-flash-lite'),
                         max_completion_tokens=self.parent_bot.config.get('openai_settings.max_completion_tokens', 16000),  # 設定ファイルから読み込み
                         image_attachments=image_attachments
                     )
@@ -1236,6 +1237,7 @@ class CharacterBot:
         async for chunk in self.parent_bot.openai_handler.generate_streaming_response(
             context=context,
             character_data=self.character_data,
+            model=self.parent_bot.config.get('openai_settings.model', 'google/gemini-2.5-flash-lite'),
             max_completion_tokens=self.parent_bot.config.get('openai_settings.max_completion_tokens', 16000),  # 設定ファイルから読み込み
             image_attachments=image_attachments
         ):
