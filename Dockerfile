@@ -14,6 +14,7 @@ RUN apt-get update \
         gcc \
         g++ \
         libc6-dev \
+        gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -32,10 +33,19 @@ COPY characters/ ./characters/
 COPY src/ ./src/
 COPY env.local ./.env
 
+# Copy entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash app \
     && chown -R app:app /app
-USER app
+
+# Set entrypoint (will run as root, then switch to app user in script)
+ENTRYPOINT ["docker-entrypoint.sh"]
+
+# Note: USER app is not set here because entrypoint runs as root
+# Entrypoint script will switch to app user after fixing permissions
 
 # Expose port (if needed for health checks)
 EXPOSE 8080

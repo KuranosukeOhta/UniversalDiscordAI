@@ -234,6 +234,40 @@ cat env.local | grep -v TOKEN | grep -v KEY
 chmod 600 env.local
 ```
 
+### ログファイルの権限エラー（Permission denied: '/app/logs/discord_ai.log'）
+
+**症状**: コンテナ起動時に `[Errno 13] Permission denied: '/app/logs/discord_ai.log'` エラーが発生
+
+**原因**: ボリュームマウントされた`logs`ディレクトリの所有権がコンテナ内の`app`ユーザーと一致していない
+
+**解決方法**:
+
+1. **ホスト側でlogsディレクトリの権限を修正**（推奨）:
+   ```bash
+   # logsディレクトリを作成（存在しない場合）
+   mkdir -p logs
+   
+   # 書き込み可能な権限を付与
+   chmod 777 logs
+   ```
+
+2. **コンテナを再ビルド**:
+   ```bash
+   # 最新のDockerfileにはエントリポイントスクリプトが含まれており、
+   # 起動時に自動的に権限を修正します
+   sudo docker-compose down
+   sudo docker-compose up --build -d
+   ```
+
+3. **手動で権限を修正**:
+   ```bash
+   # コンテナ内で権限を修正
+   sudo docker exec -u root universal-discord-ai chown -R app:app /app/logs
+   sudo docker exec -u root universal-discord-ai chmod -R 755 /app/logs
+   ```
+
+**注意**: 最新のDockerfileにはエントリポイントスクリプトが含まれており、起動時に自動的に権限を修正します。コンテナを再ビルドすることで、この問題は解決されます。
+
 ## 完全なセットアップスクリプト
 
 ### 自動セットアップスクリプトを使用（推奨）
