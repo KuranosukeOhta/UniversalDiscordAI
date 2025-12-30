@@ -47,6 +47,38 @@ BOT_ACTIVITY_TYPE=watching
 
 ### 3. Docker Composeでビルドと起動
 
+**重要**: Dockerの権限エラーが発生する場合は、以下のいずれかの方法を使用してください。
+
+#### 方法A: sudoを使用（推奨：即座に使用可能）
+
+```bash
+# sudoを使用してビルドと起動
+sudo docker-compose up --build -d
+
+# 起動状態を確認
+sudo docker-compose ps
+
+# ログを確認（リアルタイム）
+sudo docker-compose logs -f discord-ai
+```
+
+#### 方法B: dockerグループに追加（推奨：再ログイン後）
+
+```bash
+# ユーザーをdockerグループに追加
+sudo usermod -aG docker $USER
+
+# 再ログインが必要（SSH接続を切断して再接続）
+exit
+
+# SSHで再接続後、sudoなしで実行可能
+docker-compose up --build -d
+docker-compose ps
+docker-compose logs -f discord-ai
+```
+
+#### 方法C: 通常のコマンド（権限が設定済みの場合）
+
 ```bash
 # イメージをビルドしてバックグラウンドで起動
 docker-compose up --build -d
@@ -73,15 +105,23 @@ INFO - Universal Discord AI として Discord に接続しました
 
 ### ログの確認
 
+**注意**: 権限エラーが発生する場合は、すべてのコマンドに`sudo`を付けてください。
+
 ```bash
 # リアルタイムログ
 docker-compose logs -f discord-ai
+# または
+sudo docker-compose logs -f discord-ai
 
 # 最新100行のログ
 docker-compose logs --tail=100 discord-ai
+# または
+sudo docker-compose logs --tail=100 discord-ai
 
 # エラーログのみ
 docker-compose logs discord-ai | grep ERROR
+# または
+sudo docker-compose logs discord-ai | grep ERROR
 ```
 
 ### コンテナの管理
@@ -89,12 +129,18 @@ docker-compose logs discord-ai | grep ERROR
 ```bash
 # 停止
 docker-compose down
+# または
+sudo docker-compose down
 
 # 再起動
 docker-compose restart discord-ai
+# または
+sudo docker-compose restart discord-ai
 
 # 強制再ビルド
 docker-compose up --build --force-recreate -d
+# または
+sudo docker-compose up --build --force-recreate -d
 ```
 
 ### 状態確認
@@ -102,12 +148,18 @@ docker-compose up --build --force-recreate -d
 ```bash
 # コンテナの状態
 docker-compose ps
+# または
+sudo docker-compose ps
 
 # リソース使用量
 docker stats universal-discord-ai
+# または
+sudo docker stats universal-discord-ai
 
 # ヘルスチェック
 docker exec universal-discord-ai python -c "import asyncio; print('Bot is running')"
+# または
+sudo docker exec universal-discord-ai python -c "import asyncio; print('Bot is running')"
 ```
 
 ## トラブルシューティング
@@ -127,16 +179,47 @@ sudo systemctl start docker
 sudo systemctl enable docker
 ```
 
-### 権限エラーの場合
+### 権限エラーの場合（Permission denied）
+
+**症状**: `PermissionError: [Errno 13] Permission denied` が発生
+
+#### 解決方法1: sudoを使用（即座に解決）
 
 ```bash
-# ユーザーをdockerグループに追加
+# すべてのdocker-composeコマンドにsudoを付ける
+sudo docker-compose up --build -d
+sudo docker-compose ps
+sudo docker-compose logs -f discord-ai
+sudo docker-compose down
+```
+
+#### 解決方法2: dockerグループに追加（推奨）
+
+```bash
+# 現在のユーザーをdockerグループに追加
 sudo usermod -aG docker $USER
 
-# 再ログインが必要
+# グループの変更を確認
+groups
+
+# 重要: 再ログインが必要
 exit
-# SSHで再接続
+
+# SSHで再接続後、sudoなしで実行可能
+docker-compose up --build -d
 ```
+
+#### 解決方法3: Dockerソケットの権限を確認
+
+```bash
+# Dockerソケットの権限を確認
+ls -la /var/run/docker.sock
+
+# 一時的に権限を変更（非推奨、セキュリティ上の問題あり）
+# sudo chmod 666 /var/run/docker.sock
+```
+
+**注意**: 解決方法2を推奨しますが、再ログインが必要です。すぐに使用したい場合は解決方法1（sudo）を使用してください。
 
 ### 環境変数が読み込まれない場合
 
@@ -153,6 +236,24 @@ chmod 600 env.local
 
 ## 完全なセットアップスクリプト
 
+### 自動セットアップスクリプトを使用（推奨）
+
+```bash
+# スクリプトをダウンロードして実行
+curl -O https://raw.githubusercontent.com/KuranosukeOhta/UniversalDiscordAI/main/setup_ssh.sh
+chmod +x setup_ssh.sh
+./setup_ssh.sh
+```
+
+このスクリプトは以下を自動で実行します：
+- リポジトリのクローン
+- 環境変数ファイルの作成
+- Docker環境の確認
+- 権限チェック（sudoが必要な場合は自動検出）
+- Docker Composeでのビルドと起動
+
+### 手動セットアップ
+
 以下のコマンドを順番に実行することで、一括でセットアップできます：
 
 ```bash
@@ -164,10 +265,13 @@ cd UniversalDiscordAI
 cp env.example env.local
 
 # 3. env.localを編集（手動でトークンとAPIキーを設定）
-echo "env.localを編集して、DISCORD_BOT_TOKENとOPENAI_API_KEYを設定してください"
-echo "編集後、docker-compose up --build -d を実行してください"
+nano env.local
+# DISCORD_BOT_TOKENとOPENAI_API_KEYを設定
 
-# 4. Docker Composeで起動（env.localを編集した後）
-# docker-compose up --build -d
+# 4. Docker Composeで起動
+# 権限エラーが発生する場合は、sudoを付けて実行
+docker-compose up --build -d
+# または
+sudo docker-compose up --build -d
 ```
 

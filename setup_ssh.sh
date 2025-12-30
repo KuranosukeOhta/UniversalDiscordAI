@@ -79,6 +79,23 @@ if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/
 fi
 
 echo "  ✓ Docker環境が確認できました"
+
+# Docker権限の確認
+echo "  Docker権限を確認中..."
+if docker ps &> /dev/null; then
+    USE_SUDO=false
+    echo "  ✓ Docker権限が正常です（sudo不要）"
+elif sudo docker ps &> /dev/null; then
+    USE_SUDO=true
+    echo "  ⚠️  Docker権限がありません。sudoを使用します。"
+    echo "      （推奨: sudo usermod -aG docker \$USER でdockerグループに追加後、再ログイン）"
+else
+    echo "  ✗ Dockerデーモンに接続できません"
+    echo "    確認事項:"
+    echo "      - Dockerサービスが起動しているか: sudo systemctl status docker"
+    echo "      - Dockerソケットの権限: ls -la /var/run/docker.sock"
+    exit 1
+fi
 echo ""
 
 # 4. Docker Composeでビルドと起動
@@ -99,7 +116,12 @@ if grep -q "your_discord_bot_token_here\|your_openai_api_key_here" env.local; th
 fi
 
 echo "  Docker Composeでビルドと起動を実行します..."
-docker-compose up --build -d
+if [ "$USE_SUDO" = true ]; then
+    echo "  （sudoを使用して実行します）"
+    sudo docker-compose up --build -d
+else
+    docker-compose up --build -d
+fi
 
 echo ""
 echo "=========================================="
@@ -107,8 +129,16 @@ echo "セットアップ完了！"
 echo "=========================================="
 echo ""
 echo "以下のコマンドで状態を確認できます:"
-echo "  docker-compose ps              # コンテナの状態"
-echo "  docker-compose logs -f discord-ai  # ログの確認"
+if [ "$USE_SUDO" = true ]; then
+    echo "  sudo docker-compose ps              # コンテナの状態"
+    echo "  sudo docker-compose logs -f discord-ai  # ログの確認"
+    echo ""
+    echo "  ⚠️  注意: すべてのdocker-composeコマンドにsudoが必要です"
+    echo "      または、sudo usermod -aG docker \$USER でdockerグループに追加後、再ログインしてください"
+else
+    echo "  docker-compose ps              # コンテナの状態"
+    echo "  docker-compose logs -f discord-ai  # ログの確認"
+fi
 echo ""
 echo "BOTが正常に起動しているか確認してください。"
 echo ""
