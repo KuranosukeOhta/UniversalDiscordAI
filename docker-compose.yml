@@ -24,6 +24,8 @@ services:
       - discord-ai-network
     
     # Resource limits
+    # Note: deploy.resources.reservations.cpus is not supported in some docker-compose versions
+    # Using only limits for better compatibility
     deploy:
       resources:
         limits:
@@ -31,7 +33,7 @@ services:
           cpus: '0.5'
         reservations:
           memory: 512M
-          cpus: '0.25'
+          # cpus reservation removed for compatibility
     
     # Logging configuration
     logging:
