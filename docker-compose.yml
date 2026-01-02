@@ -49,6 +49,56 @@ services:
       retries: 3
       start_period: 40s
 
+  # Professional Character Bot
+  bot-professional:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: discord-ai-professional
+    restart: unless-stopped
+    
+    # Environment variables from file
+    env_file:
+      - .env.local
+    
+    # Override specific environment variables
+    environment:
+      - CHARACTER_NAME=professional
+    
+    # Volume mounts for configuration and logs
+    volumes:
+      - ./config:/app/config:ro
+      - ./characters:/app/characters:ro
+      - ./logs/professional:/app/logs:rw
+    
+    # Network configuration
+    networks:
+      - discord-ai-network
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import asyncio; print('Bot is running')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   # Plain Character Bot
   bot-plain:
     build:
