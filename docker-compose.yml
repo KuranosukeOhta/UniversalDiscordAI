@@ -7,12 +7,13 @@ services:
     container_name: discord-ai-friendly
     restart: unless-stopped
     
-    # Environment variables
+    # Environment variables from file
+    env_file:
+      - env.local
+    
+    # Override specific environment variables
     environment:
       - CHARACTER_NAME=friendly
-      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN_FRIENDLY}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     
     # Volume mounts for configuration and logs
     volumes:
@@ -48,26 +49,27 @@ services:
       retries: 3
       start_period: 40s
 
-  # Professional Character Bot
-  bot-professional:
+  # Plain Character Bot
+  bot-plain:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: discord-ai-professional
+    container_name: discord-ai-plain
     restart: unless-stopped
     
-    # Environment variables
+    # Environment variables from file
+    env_file:
+      - env.local
+    
+    # Override specific environment variables
     environment:
-      - CHARACTER_NAME=professional
-      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN_PROFESSIONAL}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - CHARACTER_NAME=plain
     
     # Volume mounts for configuration and logs
     volumes:
       - ./config:/app/config:ro
       - ./characters:/app/characters:ro
-      - ./logs/professional:/app/logs:rw
+      - ./logs/plain:/app/logs:rw
     
     # Network configuration
     networks:
