@@ -220,3 +220,6 @@ config.local.json
 # Runtime directories
 runtime/
 temp/
+
+# SpecStory history
+.specstory/history/**
