@@ -257,6 +257,11 @@ class UniversalDiscordAI(commands.Bot):
         is_mentioned = self.user.mentioned_in(message)
         mention_type = "個人メンション"
         
+        # DMの場合は常に反応する
+        if isinstance(message.channel, discord.DMChannel):
+            is_mentioned = True
+            mention_type = "DM"
+        
         # ロールメンションもチェック
         if not is_mentioned and message.guild:
             bot_member = message.guild.get_member(self.user.id)
@@ -856,9 +861,12 @@ class CharacterBot:
 async def main():
     """メイン実行関数"""
     # 環境変数チェック
-    token = os.getenv('DISCORD_BOT_TOKEN')
+    # キャラクター固有のトークンまたはフォールバックのトークンを使用
+    character_name = os.getenv('CHARACTER_NAME', 'friendly')
+    token = os.getenv(f'DISCORD_BOT_TOKEN_{character_name.upper()}') or os.getenv('DISCORD_BOT_TOKEN')
+    
     if not token:
-        print("エラー: DISCORD_BOT_TOKEN が設定されていません")
+        print(f"エラー: DISCORD_BOT_TOKEN_{character_name.upper()} または DISCORD_BOT_TOKEN が設定されていません")
         sys.exit(1)
         
     # OpenRouter API Key または OpenAI API Key のチェック
