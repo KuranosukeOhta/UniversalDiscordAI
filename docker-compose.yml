@@ -9,7 +9,7 @@ services:
     
     # Environment variables from file
     env_file:
-      - env.local
+      - .env.local
     
     # Override specific environment variables
     environment:
@@ -59,7 +59,7 @@ services:
     
     # Environment variables from file
     env_file:
-      - env.local
+      - .env.local
     
     # Override specific environment variables
     environment:

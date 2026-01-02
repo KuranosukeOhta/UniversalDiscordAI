@@ -37,11 +37,11 @@ cd UniversalDiscordAI
 ### 2. 環境変数の設定
 
 ```bash
-# env.local ファイルを編集
-cp env.example env.local
+# .env.local ファイルを編集
+cp .env.example .env.local
 ```
 
-`env.local` に以下の情報を設定：
+`.env.local` に以下の情報を設定：
 
 ```env
 DISCORD_BOT_TOKEN=your_discord_bot_token_here
@@ -53,7 +53,7 @@ OPENAI_API_KEY=your_openrouter_api_key_here
 1. [Discord Developer Portal](https://discord.com/developers/applications) にアクセス
 2. 新しいアプリケーションを作成
 3. BOTセクションでBOTユーザーを作成
-4. TOKENをコピーして `env.local` に設定
+4. TOKENをコピーして `.env.local` に設定
 5. BOTをサーバーに招待（必要な権限: メッセージ送信、メッセージ履歴読み取り、メンション確認）
 
 ### 4. OpenRouter API Key の取得
@@ -61,7 +61,7 @@ OPENAI_API_KEY=your_openrouter_api_key_here
 1. [OpenRouter](https://openrouter.ai/) にアクセス
 2. アカウントを作成またはログイン
 3. API Keysセクションで新しいAPI Keyを作成
-4. KEYをコピーして `env.local` の `OPENAI_API_KEY` に設定
+4. KEYをコピーして `.env.local` の `OPENAI_API_KEY` に設定
    - 注: 環境変数名は `OPENAI_API_KEY` ですが、OpenRouterのAPIキーを設定してください
 
 ### 5. Docker でのビルドと実行
@@ -89,8 +89,8 @@ docker-compose down
 
 ```bash
 # 1. 環境変数を設定（各キャラクター用のトークンを設定）
-cp env.example env.local
-nano env.local
+cp .env.example .env.local
+nano .env.local
 
 # 2. 以下を設定
 # DISCORD_BOT_TOKEN_FRIENDLY=your_token_1

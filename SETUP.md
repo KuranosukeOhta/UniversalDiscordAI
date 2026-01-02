@@ -88,14 +88,14 @@ ls -la
 #### 3.2 環境変数の設定
 
 ```bash
-# env.local ファイルを作成
-cp env.example env.local
+# .env.local ファイルを作成
+cp .env.example .env.local
 
-# エディタで env.local を編集
-nano env.local
+# エディタで .env.local を編集
+nano .env.local
 ```
 
-`env.local` ファイルの内容：
+`.env.local` ファイルの内容：
 
 ```env
 # Discord Bot Token（Step 1.3で取得）
@@ -222,10 +222,10 @@ logging:
 
 ```bash
 # 設定ファイルのバックアップ
-tar -czf backup_$(date +%Y%m%d).tar.gz config/ characters/ env.local
+tar -czf backup_$(date +%Y%m%d).tar.gz config/ characters/ .env.local
 
 # 定期実行の設定（cron）
-0 2 * * * cd /path/to/UniversalDiscordAI && tar -czf backup_$(date +\%Y\%m\%d).tar.gz config/ characters/ env.local
+0 2 * * * cd /path/to/UniversalDiscordAI && tar -czf backup_$(date +\%Y\%m\%d).tar.gz config/ characters/ .env.local
 ```
 
 ## 🔧 カスタマイズガイド
@@ -298,7 +298,7 @@ docker-compose restart discord-ai
 **解決方法**:
 1. 環境変数を確認：
    ```bash
-   cat env.local
+   cat .env.local
    ```
 
 2. Docker ログを確認：
@@ -308,8 +308,8 @@ docker-compose restart discord-ai
 
 3. 権限を確認：
    ```bash
-   ls -la env.local
-   chmod 600 env.local
+   ls -la .env.local
+   chmod 600 .env.local
    ```
 
 #### BOTが返答しない

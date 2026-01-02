@@ -36,27 +36,27 @@ echo ""
 
 # 2. 環境変数ファイルの確認
 echo "[2/4] 環境変数ファイルを確認中..."
-if [ ! -f "env.local" ]; then
-    echo "  env.localが存在しません。env.exampleから作成します..."
-    cp env.example env.local
-    echo "  ✓ env.localを作成しました"
+if [ ! -f ".env.local" ]; then
+    echo "  .env.localが存在しません。.env.exampleから作成します..."
+    cp .env.example .env.local
+    echo "  ✓ .env.localを作成しました"
     echo ""
-    echo "  ⚠️  重要: env.localを編集して、以下を設定してください:"
+    echo "  ⚠️  重要: .env.localを編集して、以下を設定してください:"
     echo "     - DISCORD_BOT_TOKEN"
     echo "     - OPENAI_API_KEY"
     echo ""
     echo "  編集コマンド例:"
-    echo "    nano env.local"
+    echo "    nano .env.local"
     echo "    または"
-    echo "    vi env.local"
+    echo "    vi .env.local"
     echo ""
     read -p "  今すぐ編集しますか？ (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        ${EDITOR:-nano} env.local
+        ${EDITOR:-nano} .env.local
     fi
 else
-    echo "  ✓ env.localが存在します"
+    echo "  ✓ .env.localが存在します"
 fi
 echo ""
 
@@ -102,15 +102,15 @@ echo ""
 echo "[4/4] Docker Composeでビルドと起動中..."
 echo ""
 
-# env.localの内容を確認（トークンは表示しない）
-if grep -q "your_discord_bot_token_here\|your_openai_api_key_here" env.local; then
-    echo "  ⚠️  警告: env.localにデフォルト値が残っています"
+# .env.localの内容を確認（トークンは表示しない）
+if grep -q "your_discord_bot_token_here\|your_openai_api_key_here" .env.local; then
+    echo "  ⚠️  警告: .env.localにデフォルト値が残っています"
     echo "      DISCORD_BOT_TOKENとOPENAI_API_KEYを正しく設定してください"
     echo ""
     read -p "  続行しますか？ (y/N): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "  セットアップを中断しました。env.localを編集してから再実行してください。"
+        echo "  セットアップを中断しました。.env.localを編集してから再実行してください。"
         exit 1
     fi
 fi

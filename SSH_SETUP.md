@@ -20,14 +20,14 @@ cd UniversalDiscordAI
 ### 2. 環境変数ファイルの作成
 
 ```bash
-# env.exampleをコピーしてenv.localを作成
-cp env.example env.local
+# .env.exampleをコピーして.env.localを作成
+cp .env.example .env.local
 
-# env.localを編集（nano、vi、vimなど使用）
-nano env.local
+# .env.localを編集（nano、vi、vimなど使用）
+nano .env.local
 ```
 
-`env.local` に以下の情報を設定：
+`.env.local` に以下の情報を設定：
 
 ```env
 # Discord Bot Token
@@ -224,14 +224,14 @@ ls -la /var/run/docker.sock
 ### 環境変数が読み込まれない場合
 
 ```bash
-# env.localの存在確認
-ls -la env.local
+# .env.localの存在確認
+ls -la .env.local
 
 # ファイルの内容確認（トークンは表示されないように注意）
-cat env.local | grep -v TOKEN | grep -v KEY
+cat .env.local | grep -v TOKEN | grep -v KEY
 
 # 権限の確認
-chmod 600 env.local
+chmod 600 .env.local
 ```
 
 ### ログファイルの権限エラー（Permission denied: '/app/logs/discord_ai.log'）
