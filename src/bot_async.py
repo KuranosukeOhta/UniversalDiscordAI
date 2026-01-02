@@ -861,10 +861,21 @@ async def main():
         print("エラー: DISCORD_BOT_TOKEN が設定されていません")
         sys.exit(1)
         
+    # OpenRouter API Key または OpenAI API Key のチェック
+    openrouter_key = os.getenv('OPENROUTER_API_KEY')
     openai_key = os.getenv('OPENAI_API_KEY')
-    if not openai_key:
-        print("エラー: OPENAI_API_KEY が設定されていません")
+    
+    if not openrouter_key and not openai_key:
+        print("エラー: OPENROUTER_API_KEY または OPENAI_API_KEY が設定されていません")
         sys.exit(1)
+    
+    # OpenRouter APIキーが設定されている場合、それをOPENAI_API_KEYとしても設定
+    # （OpenAI互換のAPIとして使用するため）
+    if openrouter_key and not openai_key:
+        os.environ['OPENAI_API_KEY'] = openrouter_key
+        print("OpenRouter API Key を使用します")
+    elif openai_key:
+        print("OpenAI API Key を使用します")
         
     # BOTインスタンスを作成
     bot = UniversalDiscordAI()

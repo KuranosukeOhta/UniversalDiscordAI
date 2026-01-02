@@ -24,7 +24,10 @@ if [ ! -f "env.local" ]; then
 fi
 
 # 必要な環境変数の確認
+# set -a を使って環境変数をエクスポート
+set -a
 source env.local
+set +a
 
 if [ -z "$DISCORD_BOT_TOKEN_FRIENDLY" ]; then
     echo "⚠️  警告: DISCORD_BOT_TOKEN_FRIENDLY が設定されていません"
@@ -34,9 +37,16 @@ if [ -z "$DISCORD_BOT_TOKEN_PROFESSIONAL" ]; then
     echo "⚠️  警告: DISCORD_BOT_TOKEN_PROFESSIONAL が設定されていません"
 fi
 
+# OpenRouter または OpenAI API Key のチェック
 if [ -z "$OPENROUTER_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
     echo "❌ エラー: OPENROUTER_API_KEY または OPENAI_API_KEY が設定されていません"
     exit 1
+fi
+
+if [ -n "$OPENROUTER_API_KEY" ]; then
+    echo "✅ OpenRouter API Key が設定されています"
+elif [ -n "$OPENAI_API_KEY" ]; then
+    echo "✅ OpenAI API Key が設定されています"
 fi
 
 # ログディレクトリの作成
