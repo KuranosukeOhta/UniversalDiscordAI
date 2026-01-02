@@ -37,7 +37,7 @@ class MessageTask:
 class UniversalDiscordAI(commands.Bot):
     """Universal Discord AI Bot クラス（非同期処理最適化版）"""
     
-    def __init__(self):
+    def __init__(self, character_name: Optional[str] = None):
         # Discord BOTの基本設定
         intents = discord.Intents.default()
         intents.message_content = True
@@ -55,6 +55,9 @@ class UniversalDiscordAI(commands.Bot):
         self.character_manager = CharacterManager()
         self.openai_handler = OpenAIHandler(self.config)
         self.token_counter = TokenCounter()
+        
+        # キャラクター名を環境変数または引数から取得
+        self.character_name = character_name or os.getenv('CHARACTER_NAME') or self.config.get('character_settings.default_character', 'friendly')
         
         # BOTインスタンスの管理
         self.character_bots: Dict[str, 'CharacterBot'] = {}
@@ -82,22 +85,30 @@ class UniversalDiscordAI(commands.Bot):
         
     async def setup_hook(self):
         """BOT起動時の初期設定"""
-        self.logger.info("Universal Discord AI を初期化中...")
+        self.logger.info(f"Universal Discord AI を初期化中... (キャラクター: {self.character_name})")
         
-        # 人格設定を読み込み
-        characters = await self.character_manager.load_all_characters()
-        self.logger.info(f"人格設定を読み込みました: {list(characters.keys())}")
+        # 指定されたキャラクターの設定を読み込み
+        character_data = await self.character_manager.load_character(self.character_name)
         
-        # 各人格に対応するBOTインスタンスを作成
-        for character_name, character_data in characters.items():
-            bot_instance = CharacterBot(
-                character_name=character_name,
-                character_data=character_data,
-                parent_bot=self
-            )
-            self.character_bots[character_name] = bot_instance
-            
-        self.logger.info(f"BOTインスタンスを作成しました: {len(self.character_bots)}個")
+        if not character_data:
+            self.logger.error(f"キャラクター '{self.character_name}' の読み込みに失敗しました")
+            # フォールバック: 全キャラクターを読み込む
+            characters = await self.character_manager.load_all_characters()
+            if self.character_name in characters:
+                character_data = characters[self.character_name]
+            else:
+                self.logger.error(f"キャラクター '{self.character_name}' が見つかりません")
+                sys.exit(1)
+        
+        # 指定されたキャラクターのBOTインスタンスのみを作成
+        bot_instance = CharacterBot(
+            character_name=self.character_name,
+            character_data=character_data,
+            parent_bot=self
+        )
+        self.character_bots[self.character_name] = bot_instance
+        
+        self.logger.info(f"キャラクターBOTを作成しました: {self.character_name}")
         self.logger.info(f"最大同時処理数: {self.max_concurrent_messages}")
         
         # タスククリーンアップタスクを開始
@@ -136,7 +147,7 @@ class UniversalDiscordAI(commands.Bot):
         
     async def on_ready(self):
         """BOT接続完了時の処理"""
-        self.logger.info(f'{self.user} として Discord に接続しました')
+        self.logger.info(f'{self.user} として Discord に接続しました (キャラクター: {self.character_name})')
         self.logger.info(f'サーバー数: {len(self.guilds)}')
         self.logger.info(f'最大同時処理数: {self.max_concurrent_messages}')
         
@@ -145,14 +156,14 @@ class UniversalDiscordAI(commands.Bot):
             self.detailed_logger.log_server_activity(
                 server_name=guild.name,
                 server_id=str(guild.id),
-                action="BOT接続完了",
+                action=f"BOT接続完了 ({self.character_name})",
                 details=f"メンバー数: {guild.member_count}, チャンネル数: {len(guild.channels)}"
             )
         
-        # BOTステータスをオンラインに設定
+        # BOTステータスをオンラインに設定（キャラクター名を含める）
         activity = discord.Activity(
             type=discord.ActivityType.competing,
-                            name=self.config.get('discord_settings.status', 'みんなの会話')
+            name=f"{self.character_name} | {self.config.get('discord_settings.status', 'みんなの会話')}"
         )
         await self.change_presence(
             status=discord.Status.online,
@@ -321,8 +332,8 @@ class UniversalDiscordAI(commands.Bot):
                         self.stats['channel_message_counts'][channel_key] = 0
                     self.stats['channel_message_counts'][channel_key] += 1
                 
-                # 使用する人格を決定
-                character_name = self.config.get('character_settings.default_character', 'friendly')
+                # 使用する人格を決定（このBOTインスタンスのキャラクター名を使用）
+                character_name = self.character_name
                 character_bot = self.character_bots.get(character_name)
                 
                 if not character_bot:
@@ -626,7 +637,7 @@ class UniversalDiscordAI(commands.Bot):
 
 🔄 **BOT状態**
 • Discord接続: オンライン
-• 人格数: {len(self.character_bots)}
+• キャラクター: {self.character_name}
 • 利用可能人格: {', '.join(self.character_bots.keys())}
 
 🚀 **非同期処理状況**

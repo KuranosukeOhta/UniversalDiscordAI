@@ -23,6 +23,10 @@ OpenRouter経由でGoogle Gemini 2.5 Flash Liteを使用したDiscord BOTプロ�
 
 ## 🚀 セットアップ
 
+### クイックスタート（単一BOT）
+
+以下の手順で1つのBOTを起動できます。
+
 ### 1. リポジトリのクローン
 
 ```bash
@@ -72,6 +76,48 @@ docker-compose logs -f discord-ai
 # 停止
 docker-compose down
 ```
+
+---
+
+## 🎭 複数キャラクター同時起動（推奨）
+
+**複数のキャラクターを異なるBOTアカウントで同時起動する場合は、こちらを参照してください。**
+
+📘 **詳細ガイド**: [MULTI_CHARACTER_SETUP.md](./MULTI_CHARACTER_SETUP.md)
+
+### クイックスタート
+
+```bash
+# 1. 環境変数を設定（各キャラクター用のトークンを設定）
+cp env.example env.local
+nano env.local
+
+# 2. 以下を設定
+# DISCORD_BOT_TOKEN_FRIENDLY=your_token_1
+# DISCORD_BOT_TOKEN_PROFESSIONAL=your_token_2
+# OPENROUTER_API_KEY=your_openrouter_key
+
+# 3. 起動スクリプトを実行
+./start-multi-bots.sh
+
+# 4. ログを確認
+docker-compose logs -f
+```
+
+### メリット
+
+- ✅ 各キャラクターが完全に独立したBOTアカウント
+- ✅ 異なるサーバー・チャンネルで同時に動作可能
+- ✅ 1つがクラッシュしても他に影響なし
+- ✅ リソース管理が明確
+
+### 対応キャラクター
+
+- **Friendly**: 親しみやすい会話スタイル
+- **Professional**: 専門的で丁寧な対応
+- **Creative**: 創造的でアーティスティックな返答
+
+---
 
 ## ⚙️ 設定
 

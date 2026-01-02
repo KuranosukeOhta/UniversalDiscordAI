@@ -1,31 +1,30 @@
 services:
-  discord-ai:
+  # Friendly Character Bot
+  bot-friendly:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: universal-discord-ai
+    container_name: discord-ai-friendly
     restart: unless-stopped
     
-    # Environment variables from file
-    env_file:
-      - env.local
+    # Environment variables
+    environment:
+      - CHARACTER_NAME=friendly
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN_FRIENDLY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     
     # Volume mounts for configuration and logs
     volumes:
       - ./config:/app/config:ro
       - ./characters:/app/characters:ro
-      - ./logs:/app/logs:rw
-      # env.local is loaded via env_file above, so volume mount is optional
-      # Uncomment the line below if you need to mount env.local as .env file
-      # - ./env.local:/app/.env:ro
+      - ./logs/friendly:/app/logs:rw
     
     # Network configuration
     networks:
       - discord-ai-network
     
     # Resource limits
-    # Note: deploy.resources.reservations.cpus is not supported in some docker-compose versions
-    # Using only limits for better compatibility
     deploy:
       resources:
         limits:
@@ -33,7 +32,55 @@ services:
           cpus: '0.5'
         reservations:
           memory: 512M
-          # cpus reservation removed for compatibility
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import asyncio; print('Bot is running')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Professional Character Bot
+  bot-professional:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: discord-ai-professional
+    restart: unless-stopped
+    
+    # Environment variables
+    environment:
+      - CHARACTER_NAME=professional
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN_PROFESSIONAL}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    
+    # Volume mounts for configuration and logs
+    volumes:
+      - ./config:/app/config:ro
+      - ./characters:/app/characters:ro
+      - ./logs/professional:/app/logs:rw
+    
+    # Network configuration
+    networks:
+      - discord-ai-network
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
     
     # Logging configuration
     logging:

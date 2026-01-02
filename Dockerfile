@@ -7,6 +7,7 @@ WORKDIR /app
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV CHARACTER_NAME=friendly
 
 # Install system dependencies
 RUN apt-get update \
@@ -31,7 +32,6 @@ RUN mkdir -p /app/logs /app/config /app/characters /app/src
 COPY config/ ./config/
 COPY characters/ ./characters/
 COPY src/ ./src/
-COPY env.local ./.env
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/
@@ -54,5 +54,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import asyncio; print('Bot is running')" || exit 1
 
-# Run the bot
-CMD ["python", "src/bot.py"]
+# Run the bot (use bot_async.py for async version)
+CMD ["python", "src/bot_async.py"]
