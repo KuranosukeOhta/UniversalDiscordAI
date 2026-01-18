@@ -38,6 +38,8 @@ class ServerContextCache:
         # 設定読み込み
         self.max_messages = config.get('server_context_settings.max_messages_per_server', 5000)
         self.per_channel_limit = config.get('server_context_settings.per_channel_limit', 500)
+        self.context_max_tokens = config.get('server_context_settings.context_max_tokens', 500000)
+        self.token_estimation_ratio = config.get('server_context_settings.token_estimation_ratio', 2.0)
         self.cache_ttl_minutes = config.get('server_context_settings.cache_ttl_minutes', 60)
         self.enabled = config.get('server_context_settings.enabled', False)
         self.include_threads = config.get('server_context_settings.include_threads', True)
@@ -46,7 +48,9 @@ class ServerContextCache:
         self.logger.info("🗄️  ServerContextCache 初期化 (ハイブリッド方式)")
         self.logger.info(f"   ├─ 有効: {self.enabled}")
         self.logger.info(f"   ├─ キャッシュディレクトリ: {self.cache_dir}")
-        self.logger.info(f"   ├─ サーバーあたり最大メッセージ数: {self.max_messages}")
+        self.logger.info(f"   ├─ キャッシュ最大メッセージ数: {self.max_messages}")
+        self.logger.info(f"   ├─ コンテキスト最大トークン数: {self.context_max_tokens:,} ⭐")
+        self.logger.info(f"   ├─ トークン推定比率: {self.token_estimation_ratio} (1文字≈{self.token_estimation_ratio}トークン)")
         self.logger.info(f"   ├─ チャンネルあたり最大メッセージ数: {self.per_channel_limit}")
         self.logger.info(f"   ├─ キャッシュTTL: {self.cache_ttl_minutes}分")
         self.logger.info(f"   ├─ ロックタイムアウト: {self.LOCK_TIMEOUT_SECONDS}秒")
@@ -481,10 +485,16 @@ class ServerContextCache:
         
         self.logger.info(f"📩 メッセージキャッシュ追加: [{message.guild.name}] #{getattr(message.channel, 'name', 'DM')} - {message.author.display_name}: {message.content[:50]}...")
     
+    def _estimate_tokens(self, text: str) -> int:
+        """テキストのトークン数を推定（文字数 × 推定比率）"""
+        return int(len(text) * self.token_estimation_ratio)
+    
     def get_context(self, guild_id: int) -> Optional[str]:
         """
-        キャッシュからAI用コンテキストを生成
+        キャッシュからAI用コンテキストを生成（トークンベース制限）
         高速（メモリから読み込み）
+        
+        最新メッセージから順に追加し、トークン上限に達したら打ち切り
         """
         if not self.enabled:
             return None
@@ -496,38 +506,71 @@ class ServerContextCache:
         cache_data = self.memory_cache[guild_id]
         
         self.logger.info("")
-        self.logger.info("📝 サーバーコンテキスト生成開始...")
+        self.logger.info("📝 サーバーコンテキスト生成開始 (トークンベース制限)")
+        self.logger.info(f"   ├─ トークン上限: {self.context_max_tokens:,}")
+        self.logger.info(f"   ├─ 推定比率: {self.token_estimation_ratio} トークン/文字")
         start_time = datetime.now()
         
-        context_parts = []
+        # ========================================
+        # Step 1: ヘッダー部分を生成（固定）
+        # ========================================
+        header_parts = []
         
         # メンションマッピングセクション
-        context_parts.append("# メンション用マッピング（返答時に使用してください）")
-        context_parts.append("")
-        context_parts.append("## チャンネル")
+        header_parts.append("# メンション用マッピング（返答時に使用してください）")
+        header_parts.append("")
+        header_parts.append("## チャンネル")
         for channel_id, channel_info in cache_data["channels"].items():
-            context_parts.append(f"- {channel_info['name']} → {channel_info['mention']}")
+            header_parts.append(f"- {channel_info['name']} → {channel_info['mention']}")
         
-        context_parts.append("")
-        context_parts.append("## ユーザー")
+        header_parts.append("")
+        header_parts.append("## ユーザー")
         for user_id, user_info in cache_data["users"].items():
-            context_parts.append(f"- {user_info['name']} → {user_info['mention']}")
+            header_parts.append(f"- {user_info['name']} → {user_info['mention']}")
         
         # サーバー情報
-        context_parts.append("")
-        context_parts.append("# サーバー情報")
-        context_parts.append(f"サーバー名: {cache_data['server_name']}")
-        context_parts.append(f"チャンネル数: {len(cache_data['channels'])}")
-        context_parts.append(f"アクティブユーザー数: {len(cache_data['users'])}")
-        context_parts.append(f"キャッシュ更新日時: {cache_data['last_updated']}")
+        header_parts.append("")
+        header_parts.append("# サーバー情報")
+        header_parts.append(f"サーバー名: {cache_data['server_name']}")
+        header_parts.append(f"チャンネル数: {len(cache_data['channels'])}")
+        header_parts.append(f"アクティブユーザー数: {len(cache_data['users'])}")
+        header_parts.append(f"キャッシュ更新日時: {cache_data['last_updated']}")
         
-        # 会話ログセクション
-        context_parts.append("")
-        context_parts.append("# サーバー全体の会話ログ（時系列順）")
-        context_parts.append("")
+        # 会話ログセクションのヘッダー
+        header_parts.append("")
+        header_parts.append("# サーバー全体の会話ログ（時系列順、最新から遡って収集）")
+        header_parts.append("")
         
-        # メッセージを整形
-        for msg in cache_data["messages"]:
+        header_text = "\n".join(header_parts)
+        header_tokens = self._estimate_tokens(header_text)
+        
+        # フッター部分（返答ルール）
+        footer_parts = []
+        footer_parts.append("")
+        footer_parts.append("# 返答ルール")
+        footer_parts.append("- チャンネルやユーザーに言及する際は、上記のマッピングを使って <#ID> や <@ID> 形式でメンションしてください")
+        footer_parts.append("- 例: 「#generalで話してた」→「<#チャンネルID> で話してた」")
+        footer_parts.append("- サーバー全体の会話ログを参考に、過去の話題や文脈を踏まえて返答してください")
+        
+        footer_text = "\n".join(footer_parts)
+        footer_tokens = self._estimate_tokens(footer_text)
+        
+        # 使用可能なトークン数を計算
+        available_tokens = self.context_max_tokens - header_tokens - footer_tokens
+        used_tokens = 0
+        
+        self.logger.info(f"   ├─ ヘッダートークン: {header_tokens:,}")
+        self.logger.info(f"   ├─ フッタートークン: {footer_tokens:,}")
+        self.logger.info(f"   ├─ メッセージ用トークン: {available_tokens:,}")
+        
+        # ========================================
+        # Step 2: 最新メッセージから順に追加
+        # ========================================
+        messages_to_include = []
+        total_messages = len(cache_data["messages"])
+        
+        # 最新から遡って追加
+        for msg in reversed(cache_data["messages"]):
             channel_info = cache_data["channels"].get(msg["channel_id"], {"name": "unknown", "mention": ""})
             user_info = cache_data["users"].get(msg["author_id"], {"name": "unknown", "mention": ""})
             
@@ -538,27 +581,44 @@ class ServerContextCache:
             except:
                 timestamp_str = msg["timestamp"][:16]
             
-            # メッセージ行
-            line = f"## [{timestamp_str}] #{channel_info['name']} {channel_info['mention']}"
-            context_parts.append(line)
-            
+            # メッセージテキストを生成
+            msg_lines = []
+            msg_lines.append(f"## [{timestamp_str}] #{channel_info['name']} {channel_info['mention']}")
             content_line = f"{user_info['name']} {user_info['mention']}: {msg['content']}"
             if msg.get("has_attachments"):
                 content_line += " (添付ファイルあり)"
-            context_parts.append(content_line)
-            context_parts.append("")
+            msg_lines.append(content_line)
+            msg_lines.append("")
+            
+            msg_text = "\n".join(msg_lines)
+            msg_tokens = self._estimate_tokens(msg_text)
+            
+            # トークン上限チェック
+            if used_tokens + msg_tokens > available_tokens:
+                self.logger.info(f"   ├─ ⚠️ トークン上限に到達、打ち切り")
+                break
+            
+            # 先頭に追加（時系列順を維持）
+            messages_to_include.insert(0, msg_text)
+            used_tokens += msg_tokens
         
-        # 返答ルール
-        context_parts.append("# 返答ルール")
-        context_parts.append("- チャンネルやユーザーに言及する際は、上記のマッピングを使って <#ID> や <@ID> 形式でメンションしてください")
-        context_parts.append("- 例: 「#generalで話してた」→「<#チャンネルID> で話してた」")
-        context_parts.append("- サーバー全体の会話ログを参考に、過去の話題や文脈を踏まえて返答してください")
+        # ========================================
+        # Step 3: コンテキストを組み立て
+        # ========================================
+        context_parts = [header_text]
+        context_parts.extend(messages_to_include)
+        context_parts.append(footer_text)
         
         context = "\n".join(context_parts)
         
+        # 最終的なトークン数
+        total_tokens = header_tokens + used_tokens + footer_tokens
+        
         elapsed = (datetime.now() - start_time).total_seconds() * 1000
-        self.logger.info(f"   ├─ メッセージ数: {len(cache_data['messages'])}")
-        self.logger.info(f"   ├─ コンテキスト長: {len(context)} 文字")
+        self.logger.info(f"   ├─ キャッシュ内メッセージ: {total_messages}件")
+        self.logger.info(f"   ├─ 含まれたメッセージ: {len(messages_to_include)}件")
+        self.logger.info(f"   ├─ 推定トークン数: {total_tokens:,} / {self.context_max_tokens:,}")
+        self.logger.info(f"   ├─ コンテキスト長: {len(context):,} 文字")
         self.logger.info(f"   └─ 生成時間: {elapsed:.2f}ms")
         self.logger.info("")
         

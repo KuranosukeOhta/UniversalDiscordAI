@@ -3,6 +3,8 @@
     "enabled": true,
     "max_messages_per_server": 5000,
     "per_channel_limit": 500,
+    "context_max_tokens": 500000,
+    "token_estimation_ratio": 2.0,
     "cache_ttl_minutes": 60,
     "include_threads": true,
     "periodic_sync_enabled": false,
