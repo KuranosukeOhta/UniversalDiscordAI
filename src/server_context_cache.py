@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set
 from pathlib import Path
@@ -15,7 +16,10 @@ import discord
 
 
 class ServerContextCache:
-    """サーバーコンテキストのキャッシュ管理"""
+    """サーバーコンテキストのキャッシュ管理（ハイブリッド方式: TTL + 軽量ロック）"""
+    
+    # ロックファイルのタイムアウト（秒）
+    LOCK_TIMEOUT_SECONDS = 300  # 5分
     
     def __init__(self, config, cache_dir: str = "cache/servers"):
         self.config = config
@@ -39,12 +43,13 @@ class ServerContextCache:
         self.include_threads = config.get('server_context_settings.include_threads', True)
         
         self.logger.info("=" * 60)
-        self.logger.info("🗄️  ServerContextCache 初期化")
+        self.logger.info("🗄️  ServerContextCache 初期化 (ハイブリッド方式)")
         self.logger.info(f"   ├─ 有効: {self.enabled}")
         self.logger.info(f"   ├─ キャッシュディレクトリ: {self.cache_dir}")
         self.logger.info(f"   ├─ サーバーあたり最大メッセージ数: {self.max_messages}")
         self.logger.info(f"   ├─ チャンネルあたり最大メッセージ数: {self.per_channel_limit}")
         self.logger.info(f"   ├─ キャッシュTTL: {self.cache_ttl_minutes}分")
+        self.logger.info(f"   ├─ ロックタイムアウト: {self.LOCK_TIMEOUT_SECONDS}秒")
         self.logger.info(f"   └─ スレッド含む: {self.include_threads}")
         self.logger.info("=" * 60)
     
@@ -58,10 +63,104 @@ class ServerContextCache:
         """キャッシュファイルのパスを取得"""
         return self.cache_dir / f"{guild_id}.json"
     
+    def _get_lock_path(self, guild_id: int) -> Path:
+        """ロックファイル（.updating）のパスを取得"""
+        return self.cache_dir / f"{guild_id}.updating"
+    
+    def _is_cache_valid(self, guild_id: int) -> bool:
+        """
+        キャッシュが有効かどうかをチェック
+        - ファイルが存在する
+        - TTL内である
+        """
+        cache_path = self._get_cache_path(guild_id)
+        
+        if not cache_path.exists():
+            self.logger.info(f"   📂 キャッシュファイルが存在しません: {cache_path}")
+            return False
+        
+        try:
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                cache_data = json.load(f)
+            
+            last_updated_str = cache_data.get("last_updated")
+            if not last_updated_str:
+                self.logger.info(f"   ⚠️ last_updated が見つかりません")
+                return False
+            
+            last_updated = datetime.fromisoformat(last_updated_str)
+            ttl = timedelta(minutes=self.cache_ttl_minutes)
+            expiry_time = last_updated + ttl
+            
+            is_valid = datetime.now() < expiry_time
+            
+            if is_valid:
+                remaining = expiry_time - datetime.now()
+                self.logger.info(f"   ✅ キャッシュ有効 (残り: {remaining.seconds // 60}分{remaining.seconds % 60}秒)")
+            else:
+                self.logger.info(f"   ⏰ キャッシュ期限切れ (TTL: {self.cache_ttl_minutes}分)")
+            
+            return is_valid
+            
+        except Exception as e:
+            self.logger.warning(f"   ⚠️ キャッシュ有効性チェックエラー: {e}")
+            return False
+    
+    async def _acquire_file_lock(self, guild_id: int) -> bool:
+        """
+        ファイルベースの軽量ロックを取得
+        - .updating ファイルを作成
+        - タイムアウトしたロックは強制解除
+        """
+        lock_path = self._get_lock_path(guild_id)
+        
+        # 既存のロックファイルをチェック
+        if lock_path.exists():
+            lock_age = time.time() - lock_path.stat().st_mtime
+            
+            if lock_age < self.LOCK_TIMEOUT_SECONDS:
+                # 他のBOTが更新中
+                self.logger.info(f"   🔒 他のBOTが更新中 (経過: {lock_age:.0f}秒)")
+                return False
+            else:
+                # タイムアウトしたロックを強制解除
+                self.logger.warning(f"   ⚠️ 古いロックファイルを強制削除 (経過: {lock_age:.0f}秒)")
+                try:
+                    lock_path.unlink()
+                except Exception as e:
+                    self.logger.error(f"   ❌ ロックファイル削除エラー: {e}")
+        
+        # ロックファイルを作成
+        try:
+            with open(lock_path, 'w') as f:
+                f.write(f"{datetime.now().isoformat()}\n")
+                f.write(f"pid: {os.getpid()}\n")
+            self.logger.info(f"   🔓 ロック取得成功: {lock_path}")
+            return True
+        except Exception as e:
+            self.logger.error(f"   ❌ ロック取得エラー: {e}")
+            return False
+    
+    async def _release_file_lock(self, guild_id: int):
+        """ファイルベースのロックを解放"""
+        lock_path = self._get_lock_path(guild_id)
+        
+        try:
+            if lock_path.exists():
+                lock_path.unlink()
+                self.logger.info(f"   🔓 ロック解放: {lock_path}")
+        except Exception as e:
+            self.logger.error(f"   ❌ ロック解放エラー: {e}")
+    
     async def initialize_server(self, guild: discord.Guild) -> bool:
         """
         サーバーの全チャンネルから履歴を取得してキャッシュを初期化
         BOT起動時に呼び出される
+        
+        ハイブリッド方式:
+        1. 既存キャッシュが有効ならスキップ（TTLチェック）
+        2. 他のBOTが更新中なら待機して既存キャッシュを使用
+        3. それ以外の場合は新規取得
         """
         if not self.enabled:
             self.logger.info(f"⏭️  サーバーコンテキストキャッシュが無効のためスキップ: {guild.name}")
@@ -76,125 +175,185 @@ class ServerContextCache:
             self.logger.info(f"🚀 サーバーコンテキスト初期化開始: {guild.name} (ID: {guild_id})")
             self.logger.info("=" * 70)
             
+            # Step 1: キャッシュの有効性をチェック
+            self.logger.info("")
+            self.logger.info("📋 Step 1: キャッシュ有効性チェック")
+            if self._is_cache_valid(guild_id):
+                # 既存キャッシュを読み込んでメモリに展開
+                cache_data = await self._load_cache_from_file(guild_id)
+                if cache_data:
+                    self.memory_cache[guild_id] = cache_data
+                    self.logger.info(f"   ✅ 既存キャッシュを使用: {len(cache_data.get('messages', []))}件のメッセージ")
+                    self.logger.info("=" * 70)
+                    self.logger.info("")
+                    return True
+            
+            # Step 2: ファイルロックを取得
+            self.logger.info("")
+            self.logger.info("📋 Step 2: ファイルロック取得")
+            if not await self._acquire_file_lock(guild_id):
+                # 他のBOTが更新中 → 待機して既存キャッシュを使用
+                self.logger.info(f"   ⏳ 他のBOTが更新中、待機します...")
+                
+                # 最大30秒待機して、更新完了を待つ
+                for i in range(6):
+                    await asyncio.sleep(5)
+                    self.logger.info(f"   ⏳ 待機中... ({(i+1)*5}秒)")
+                    
+                    # ロックが解放されたかチェック
+                    lock_path = self._get_lock_path(guild_id)
+                    if not lock_path.exists():
+                        self.logger.info(f"   ✅ ロック解放を確認")
+                        break
+                
+                # 更新されたキャッシュを読み込み
+                cache_data = await self._load_cache_from_file(guild_id)
+                if cache_data:
+                    self.memory_cache[guild_id] = cache_data
+                    self.logger.info(f"   ✅ 更新されたキャッシュを使用: {len(cache_data.get('messages', []))}件のメッセージ")
+                    self.logger.info("=" * 70)
+                    self.logger.info("")
+                    return True
+                else:
+                    self.logger.warning(f"   ⚠️ キャッシュが見つかりません、新規取得を試みます")
+                    # ロックを取得して続行
+                    await self._acquire_file_lock(guild_id)
+            
+            # Step 3: 新規取得
+            self.logger.info("")
+            self.logger.info("📋 Step 3: 新規キャッシュ取得")
+            
             start_time = datetime.now()
             
-            # キャッシュ構造を初期化
-            cache_data = {
-                "server_id": str(guild_id),
-                "server_name": guild.name,
-                "last_updated": datetime.now().isoformat(),
-                "channels": {},
-                "users": {},
-                "messages": []
-            }
-            
-            # テキストチャンネルを取得
-            text_channels = [ch for ch in guild.channels if isinstance(ch, discord.TextChannel)]
-            self.logger.info(f"📋 テキストチャンネル数: {len(text_channels)}")
-            
-            # スレッドも含める場合
-            threads = []
-            if self.include_threads:
-                for channel in text_channels:
-                    try:
-                        channel_threads = channel.threads
-                        threads.extend(channel_threads)
-                    except Exception as e:
-                        self.logger.warning(f"   ⚠️ スレッド取得エラー ({channel.name}): {e}")
-                self.logger.info(f"🧵 アクティブスレッド数: {len(threads)}")
-            
-            # チャンネル情報を収集
-            self.logger.info("")
-            self.logger.info("📂 チャンネル情報を収集中...")
-            for channel in text_channels:
-                cache_data["channels"][str(channel.id)] = {
-                    "name": channel.name,
-                    "mention": f"<#{channel.id}>",
-                    "topic": channel.topic or ""
+            try:
+                # キャッシュ構造を初期化
+                cache_data = {
+                    "server_id": str(guild_id),
+                    "server_name": guild.name,
+                    "last_updated": datetime.now().isoformat(),
+                    "channels": {},
+                    "users": {},
+                    "messages": []
                 }
-                self.logger.info(f"   ├─ #{channel.name} (ID: {channel.id})")
-            
-            for thread in threads:
-                cache_data["channels"][str(thread.id)] = {
-                    "name": thread.name,
-                    "mention": f"<#{thread.id}>",
-                    "topic": f"スレッド (親: #{thread.parent.name if thread.parent else 'unknown'})"
-                }
-                self.logger.info(f"   ├─ 🧵 {thread.name} (ID: {thread.id})")
-            
-            # チャンネルあたりの取得件数を計算
-            total_channels = len(text_channels) + len(threads)
-            if total_channels > 0:
-                adjusted_per_channel = min(
-                    self.per_channel_limit,
-                    self.max_messages // total_channels
-                )
-            else:
-                adjusted_per_channel = self.per_channel_limit
-            
-            self.logger.info("")
-            self.logger.info(f"📊 取得設定:")
-            self.logger.info(f"   ├─ チャンネル総数: {total_channels}")
-            self.logger.info(f"   ├─ チャンネルあたり取得件数: {adjusted_per_channel}")
-            self.logger.info(f"   └─ 最大合計メッセージ数: {self.max_messages}")
-            
-            # 全チャンネルからメッセージを収集
-            all_messages = []
-            users_seen: Set[int] = set()
-            
-            self.logger.info("")
-            self.logger.info("📨 メッセージ収集開始...")
-            
-            # テキストチャンネルから収集
-            for i, channel in enumerate(text_channels, 1):
-                channel_messages = await self._fetch_channel_messages(
-                    channel, adjusted_per_channel, users_seen, cache_data
-                )
-                all_messages.extend(channel_messages)
-                self.logger.info(f"   [{i}/{len(text_channels)}] #{channel.name}: {len(channel_messages)}件取得")
-            
-            # スレッドから収集
-            if self.include_threads and threads:
+                
+                # テキストチャンネルを取得
+                text_channels = [ch for ch in guild.channels if isinstance(ch, discord.TextChannel)]
+                self.logger.info(f"   📋 テキストチャンネル数: {len(text_channels)}")
+                
+                # スレッドも含める場合
+                threads = []
+                if self.include_threads:
+                    for channel in text_channels:
+                        try:
+                            channel_threads = channel.threads
+                            threads.extend(channel_threads)
+                        except Exception as e:
+                            self.logger.warning(f"   ⚠️ スレッド取得エラー ({channel.name}): {e}")
+                    self.logger.info(f"   🧵 アクティブスレッド数: {len(threads)}")
+                
+                # チャンネル情報を収集
                 self.logger.info("")
-                self.logger.info("🧵 スレッドからメッセージ収集中...")
-                for i, thread in enumerate(threads, 1):
-                    thread_messages = await self._fetch_channel_messages(
-                        thread, adjusted_per_channel // 2, users_seen, cache_data  # スレッドは少なめ
+                self.logger.info("   📂 チャンネル情報を収集中...")
+                for channel in text_channels:
+                    cache_data["channels"][str(channel.id)] = {
+                        "name": channel.name,
+                        "mention": f"<#{channel.id}>",
+                        "topic": channel.topic or ""
+                    }
+                    self.logger.info(f"      ├─ #{channel.name} (ID: {channel.id})")
+                
+                for thread in threads:
+                    cache_data["channels"][str(thread.id)] = {
+                        "name": thread.name,
+                        "mention": f"<#{thread.id}>",
+                        "topic": f"スレッド (親: #{thread.parent.name if thread.parent else 'unknown'})"
+                    }
+                    self.logger.info(f"      ├─ 🧵 {thread.name} (ID: {thread.id})")
+                
+                # チャンネルあたりの取得件数を計算
+                total_channels = len(text_channels) + len(threads)
+                if total_channels > 0:
+                    adjusted_per_channel = min(
+                        self.per_channel_limit,
+                        self.max_messages // total_channels
                     )
-                    all_messages.extend(thread_messages)
-                    self.logger.info(f"   [{i}/{len(threads)}] 🧵 {thread.name}: {len(thread_messages)}件取得")
-            
-            # 時系列順にソート
-            all_messages.sort(key=lambda x: x["timestamp"])
-            
-            # 最大件数に制限
-            if len(all_messages) > self.max_messages:
-                all_messages = all_messages[-self.max_messages:]
-                self.logger.info(f"   ⚠️ メッセージ数を {self.max_messages} 件に制限しました")
-            
-            cache_data["messages"] = all_messages
-            cache_data["last_updated"] = datetime.now().isoformat()
-            
-            # メモリキャッシュに保存
-            self.memory_cache[guild_id] = cache_data
-            
-            # JSONファイルに保存
-            await self._save_cache_to_file(guild_id, cache_data)
-            
-            # 完了ログ
-            elapsed = (datetime.now() - start_time).total_seconds()
-            self.logger.info("")
-            self.logger.info("=" * 70)
-            self.logger.info(f"✅ サーバーコンテキスト初期化完了: {guild.name}")
-            self.logger.info(f"   ├─ 総メッセージ数: {len(all_messages)}")
-            self.logger.info(f"   ├─ ユニークユーザー数: {len(cache_data['users'])}")
-            self.logger.info(f"   ├─ チャンネル数: {len(cache_data['channels'])}")
-            self.logger.info(f"   ├─ 所要時間: {elapsed:.2f}秒")
-            self.logger.info(f"   └─ キャッシュファイル: {self._get_cache_path(guild_id)}")
-            self.logger.info("=" * 70)
-            self.logger.info("")
-            
-            return True
+                else:
+                    adjusted_per_channel = self.per_channel_limit
+                
+                self.logger.info("")
+                self.logger.info(f"   📊 取得設定:")
+                self.logger.info(f"      ├─ チャンネル総数: {total_channels}")
+                self.logger.info(f"      ├─ チャンネルあたり取得件数: {adjusted_per_channel}")
+                self.logger.info(f"      └─ 最大合計メッセージ数: {self.max_messages}")
+                
+                # 全チャンネルからメッセージを収集
+                all_messages = []
+                users_seen: Set[int] = set()
+                
+                self.logger.info("")
+                self.logger.info("   📨 メッセージ収集開始...")
+                
+                # テキストチャンネルから収集
+                for i, channel in enumerate(text_channels, 1):
+                    channel_messages = await self._fetch_channel_messages(
+                        channel, adjusted_per_channel, users_seen, cache_data
+                    )
+                    all_messages.extend(channel_messages)
+                    self.logger.info(f"      [{i}/{len(text_channels)}] #{channel.name}: {len(channel_messages)}件取得")
+                
+                # スレッドから収集
+                if self.include_threads and threads:
+                    self.logger.info("")
+                    self.logger.info("   🧵 スレッドからメッセージ収集中...")
+                    for i, thread in enumerate(threads, 1):
+                        thread_messages = await self._fetch_channel_messages(
+                            thread, adjusted_per_channel // 2, users_seen, cache_data  # スレッドは少なめ
+                        )
+                        all_messages.extend(thread_messages)
+                        self.logger.info(f"      [{i}/{len(threads)}] 🧵 {thread.name}: {len(thread_messages)}件取得")
+                
+                # 時系列順にソート
+                all_messages.sort(key=lambda x: x["timestamp"])
+                
+                # 最大件数に制限
+                if len(all_messages) > self.max_messages:
+                    all_messages = all_messages[-self.max_messages:]
+                    self.logger.info(f"   ⚠️ メッセージ数を {self.max_messages} 件に制限しました")
+                
+                cache_data["messages"] = all_messages
+                cache_data["last_updated"] = datetime.now().isoformat()
+                
+                # メモリキャッシュに保存
+                self.memory_cache[guild_id] = cache_data
+                
+                # JSONファイルに保存
+                await self._save_cache_to_file(guild_id, cache_data)
+                
+                # 完了ログ
+                elapsed = (datetime.now() - start_time).total_seconds()
+                self.logger.info("")
+                self.logger.info("=" * 70)
+                self.logger.info(f"✅ サーバーコンテキスト初期化完了: {guild.name}")
+                self.logger.info(f"   ├─ 総メッセージ数: {len(all_messages)}")
+                self.logger.info(f"   ├─ ユニークユーザー数: {len(cache_data['users'])}")
+                self.logger.info(f"   ├─ チャンネル数: {len(cache_data['channels'])}")
+                self.logger.info(f"   ├─ 所要時間: {elapsed:.2f}秒")
+                self.logger.info(f"   └─ キャッシュファイル: {self._get_cache_path(guild_id)}")
+                self.logger.info("=" * 70)
+                self.logger.info("")
+                
+                return True
+                
+            except Exception as e:
+                self.logger.error(f"❌ キャッシュ初期化エラー: {e}")
+                import traceback
+                self.logger.error(traceback.format_exc())
+                return False
+                
+            finally:
+                # 必ずファイルロックを解放
+                await self._release_file_lock(guild_id)
+                self.logger.info(f"   🔓 ファイルロック解放完了")
     
     async def _fetch_channel_messages(
         self, 
@@ -430,15 +589,29 @@ class ServerContextCache:
             "last_updated": cache_data.get("last_updated", "unknown")
         }
     
-    async def periodic_sync(self, guild: discord.Guild):
+    async def periodic_sync(self, guild: discord.Guild, force: bool = False):
         """
         定期的な差分同期（オプション）
         長時間稼働時のキャッシュ整合性を保つ
+        
+        Args:
+            guild: 対象のDiscordサーバー
+            force: Trueの場合、TTLを無視して強制更新
         """
         if not self.enabled:
             return
         
-        self.logger.info(f"🔄 定期同期開始: {guild.name}")
+        self.logger.info(f"🔄 定期同期開始: {guild.name} (force={force})")
+        
+        if force:
+            # 強制更新: 既存のキャッシュファイルを削除してから再取得
+            cache_path = self._get_cache_path(guild.id)
+            try:
+                if cache_path.exists():
+                    cache_path.unlink()
+                    self.logger.info(f"   🗑️  既存キャッシュを削除: {cache_path}")
+            except Exception as e:
+                self.logger.warning(f"   ⚠️ キャッシュ削除エラー: {e}")
         
         # 現在のキャッシュを再構築
         await self.initialize_server(guild)
