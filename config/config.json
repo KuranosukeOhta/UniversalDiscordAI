@@ -37,7 +37,7 @@
     "enable_typing_indicator": true
   },
   "openai_settings": {
-    "model": "google/gemini-2.5-flash-lite",
+    "model": "x-ai/grok-4.1-fast",
     "max_completion_tokens": 16000,
     "temperature": 1.0,
     "timeout_seconds": 120,
