@@ -97,6 +97,7 @@ backups/
 # Cache
 .cache/
 *.cache
+cache/
 
 # Node.js (if any frontend tools are added later)
 node_modules/

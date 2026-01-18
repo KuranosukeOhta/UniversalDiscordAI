@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 from character_manager import CharacterManager
 from openai_handler import OpenAIHandler
 from function_call_handler import FunctionCallHandler
+from server_context_cache import ServerContextCache
 from utils import ConfigManager, setup_logging, TokenCounter, DetailedLogger, UsageAggregator
 
 # 環境変数を読み込み
@@ -56,6 +57,9 @@ class UniversalDiscordAI(commands.Bot):
         self.character_manager = CharacterManager()
         self.openai_handler = OpenAIHandler(self.config)
         self.token_counter = TokenCounter()
+        
+        # サーバーコンテキストキャッシュの初期化
+        self.server_context_cache = ServerContextCache(self.config)
         
         # ファンクションコールハンドラはsetup_hookで初期化
         self.function_call_handler = None
@@ -270,6 +274,17 @@ class UniversalDiscordAI(commands.Bot):
                 details=f"メンバー数: {guild.member_count}, チャンネル数: {len(guild.channels)}"
             )
         
+        # サーバーコンテキストキャッシュの初期化
+        if self.server_context_cache.enabled:
+            self.logger.info("")
+            self.logger.info("🗄️  サーバーコンテキストキャッシュの初期化を開始...")
+            for guild in self.guilds:
+                try:
+                    await self.server_context_cache.initialize_server(guild)
+                except Exception as e:
+                    self.logger.error(f"❌ サーバーキャッシュ初期化エラー ({guild.name}): {e}")
+            self.logger.info("✅ 全サーバーのコンテキストキャッシュ初期化完了")
+        
         # BOTステータスをオンラインに設定
         activity = discord.Activity(
             type=discord.ActivityType.competing,
@@ -313,6 +328,12 @@ class UniversalDiscordAI(commands.Bot):
     async def close(self):
         """BOT終了時の処理"""
         self.logger.info(self.config.get('logging_settings.log_messages.bot_shutdown', 'BOTを終了中...'))
+        
+        # サーバーコンテキストキャッシュを保存
+        if self.server_context_cache.enabled:
+            self.logger.info("🗄️  サーバーコンテキストキャッシュを保存中...")
+            await self.server_context_cache.save_all_caches()
+            self.logger.info("✅ キャッシュ保存完了")
         
         # 実行中のタスクをキャンセル
         for task_info in self.active_message_tasks.values():
@@ -389,6 +410,10 @@ class UniversalDiscordAI(commands.Bot):
         if message.author.bot:
             self.logger.debug(f"BOTメッセージを無視: {message.author}")
             return
+        
+        # サーバーコンテキストキャッシュにメッセージを追加（リアルタイム更新）
+        if message.guild and self.server_context_cache.enabled:
+            self.server_context_cache.add_message(message)
         
         # DMチャットの判定
         is_dm = isinstance(message.channel, discord.DMChannel)
@@ -923,6 +948,29 @@ class UniversalDiscordAI(commands.Bot):
 • キュー内メッセージ数: {queued_messages_total}
 • アクティブキュー数: {active_queues}
 • キュー処理済みメッセージ数: {self.stats['queued_messages']}{channel_processing_info}{server_stats}{channel_stats}"""
+
+            # サーバーコンテキストキャッシュ情報を追加
+            if self.server_context_cache.enabled and message.guild:
+                cache_stats = self.server_context_cache.get_cache_stats(message.guild.id)
+                if cache_stats:
+                    status_info += f"""
+
+🗄️ **サーバーコンテキストキャッシュ**
+• 状態: 有効
+• キャッシュメッセージ数: {cache_stats['message_count']}
+• キャッシュチャンネル数: {cache_stats['channel_count']}
+• キャッシュユーザー数: {cache_stats['user_count']}
+• 最終更新: {cache_stats['last_updated']}"""
+                else:
+                    status_info += """
+
+🗄️ **サーバーコンテキストキャッシュ**
+• 状態: 初期化中または未初期化"""
+            elif not self.server_context_cache.enabled:
+                status_info += """
+
+🗄️ **サーバーコンテキストキャッシュ**
+• 状態: 無効"""
             
             await message.reply(status_info)
             
@@ -1139,11 +1187,35 @@ class CharacterBot:
         # 人格設定
         context_parts.append(f"# 人格設定\n{self.character_data.get('content', '')}")
         
-        # チャンネル情報
-        context_parts.append(f"\n# チャンネル情報")
-        context_parts.append(f"チャンネル名: {channel_info['name']}")
-        context_parts.append(f"チャンネルトピック: {channel_info['topic']}")
-        context_parts.append(f"チャンネルタイプ: {channel_info['type']}")
+        # サーバーコンテキストキャッシュを使用（有効な場合）
+        server_context = None
+        if message.guild and self.parent_bot.server_context_cache.enabled:
+            server_context = self.parent_bot.server_context_cache.get_context(message.guild.id)
+        
+        if server_context:
+            # サーバー全体のコンテキストを使用
+            self.logger.info("🗄️  サーバーコンテキストキャッシュを使用")
+            context_parts.append(server_context)
+        else:
+            # 従来の方式：チャンネル情報と履歴を使用
+            self.logger.info("📝 従来のチャンネル履歴を使用")
+            
+            # チャンネル情報
+            context_parts.append(f"\n# チャンネル情報")
+            context_parts.append(f"チャンネル名: {channel_info['name']}")
+            context_parts.append(f"チャンネルトピック: {channel_info['topic']}")
+            context_parts.append(f"チャンネルタイプ: {channel_info['type']}")
+            
+            # チャット履歴
+            if chat_history:
+                context_parts.append(f"\n# 最近のチャット履歴")
+                # 取得上限（general_settings.chat_history_limit）と同じ件数をAIコンテキストにも使用
+                history_count = self.parent_bot.config.get('general_settings.chat_history_limit', 100)
+                for item in chat_history[-history_count:]:
+                    # 返信先のメッセージは履歴から除外（重複を避けるため）
+                    if reply_context and item['id'] == reply_context['id']:
+                        continue
+                    context_parts.append(f"{item['author']}: {item['content']}")
         
         # 返信先のメッセージ（存在する場合）
         if reply_context:
@@ -1152,17 +1224,6 @@ class CharacterBot:
             if reply_context.get('attachments', False):
                 context_parts.append(f"（添付ファイルあり）")
             context_parts.append(f"（このメッセージへの返信として、以下のメッセージが送信されました）")
-        
-        # チャット履歴
-        if chat_history:
-            context_parts.append(f"\n# 最近のチャット履歴")
-            # 取得上限（general_settings.chat_history_limit）と同じ件数をAIコンテキストにも使用
-            history_count = self.parent_bot.config.get('general_settings.chat_history_limit', 100)
-            for item in chat_history[-history_count:]:
-                # 返信先のメッセージは履歴から除外（重複を避けるため）
-                if reply_context and item['id'] == reply_context['id']:
-                    continue
-                context_parts.append(f"{item['author']}: {item['content']}")
                 
         # 現在のメッセージ
         context_parts.append(f"\n# 現在のメッセージ")

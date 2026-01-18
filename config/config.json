@@ -1,4 +1,13 @@
 {
+  "server_context_settings": {
+    "enabled": true,
+    "max_messages_per_server": 5000,
+    "per_channel_limit": 500,
+    "cache_ttl_minutes": 60,
+    "include_threads": true,
+    "periodic_sync_enabled": false,
+    "periodic_sync_interval_minutes": 30
+  },
   "discord_settings": {
     "status": "みんなの会話に参加中",
     "admin_commands_enabled": true,
