@@ -16,11 +16,12 @@ services:
       - CHARACTER_NAME=friendly
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN_FRIENDLY}
     
-    # Volume mounts for configuration and logs
+    # Volume mounts for configuration, logs, and cache
     volumes:
       - ./config:/app/config:ro
       - ./characters:/app/characters:ro
       - ./logs/friendly:/app/logs:rw
+      - ./cache:/app/cache:rw
     
     # Network configuration
     networks:
@@ -67,11 +68,12 @@ services:
       - CHARACTER_NAME=plain
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN_PROFESSIONAL}
     
-    # Volume mounts for configuration and logs
+    # Volume mounts for configuration, logs, and cache
     volumes:
       - ./config:/app/config:ro
       - ./characters:/app/characters:ro
       - ./logs/plain:/app/logs:rw
+      - ./cache:/app/cache:rw
     
     # Network configuration
     networks:
